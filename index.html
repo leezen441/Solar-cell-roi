@@ -1,0 +1,3010 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>คำนวณ ROI โซลาร์เซลล์ | Solar ROI Calculator</title>
+
+  <!-- Thai font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+
+  <!-- Tailwind Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50:  '#fffbeb', 100: '#fef3c7', 400: '#facc15',
+              500: '#f59e0b', 600: '#d97706', 700: '#b45309'
+            },
+            ink: {
+              900: '#0f172a', 700: '#334155', 500: '#64748b',
+              300: '#cbd5e1', 100: '#f1f5f9'
+            }
+          },
+          fontFamily: { thai: ['Prompt', 'Sarabun', 'system-ui', 'sans-serif'] },
+          boxShadow: { card: '0 4px 20px -4px rgba(15,23,42,0.08)' }
+        }
+      }
+    };
+  </script>
+
+  <!-- React 18 + Recharts -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/prop-types@15/prop-types.min.js"></script>
+  <script crossorigin src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    body {
+      font-family: 'Prompt', 'Sarabun', system-ui, sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+      transition: background 0.3s, color 0.3s;
+    }
+    /* Dark mode */
+    html.dark body { background: #0f172a; color: #e2e8f0; }
+    html.dark .bg-white { background: #1e293b !important; }
+    html.dark .bg-ink-100\/50, html.dark .bg-ink-100\/60 { background: rgba(30,41,59,0.7) !important; }
+    html.dark .bg-ink-100 { background: #1e293b !important; }
+    html.dark .text-ink-900 { color: #f1f5f9 !important; }
+    html.dark .text-ink-700 { color: #cbd5e1 !important; }
+    html.dark .text-ink-500 { color: #94a3b8 !important; }
+    html.dark .border-ink-100, html.dark .border-ink-200, html.dark .border-ink-300 { border-color: #334155 !important; }
+    html.dark input, html.dark select { background: #0f172a !important; color: #e2e8f0 !important; border-color: #475569 !important; }
+    html.dark .shadow-card { box-shadow: 0 4px 20px -4px rgba(0,0,0,0.3) !important; }
+    html.dark .bg-green-50 { background: rgba(34,197,94,0.1) !important; }
+    html.dark .bg-blue-50 { background: rgba(59,130,246,0.1) !important; }
+    html.dark .bg-red-50 { background: rgba(239,68,68,0.1) !important; }
+    html.dark .bg-amber-50 { background: rgba(245,158,11,0.1) !important; }
+    html.dark .bg-brand-50\/50 { background: rgba(245,158,11,0.08) !important; }
+    input[type="range"].brand-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      border-radius: 999px;
+      background: linear-gradient(
+        to right,
+        #f59e0b 0%, #f59e0b var(--val, 50%),
+        #cbd5e1 var(--val, 50%), #cbd5e1 100%
+      );
+      outline: none;
+    }
+    input[type="range"].brand-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      background: white;
+      border: 3px solid #f59e0b;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+    input[type="range"].brand-slider::-moz-range-thumb {
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      background: white;
+      border: 3px solid #f59e0b;
+      cursor: pointer;
+    }
+    .boot {
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      gap: 12px;
+      color: #64748b; font-size: 14px;
+    }
+    .boot .spin {
+      width: 18px; height: 18px;
+      border: 2px solid #cbd5e1;
+      border-top-color: #f59e0b;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---- Print / Save as PDF — A4 Landscape, multi-page friendly ---- */
+    .print-only { display: none; }
+    @media print {
+      @page { size: A4 landscape; margin: 4mm; }
+
+      html, body {
+        background: white !important;
+        font-size: 7pt;
+        line-height: 1.15;
+        color: #0f172a !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      .no-print { display: none !important; }
+      .print-only { display: block !important; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+      /* ===== HIDE everything we don't need on 1-page report ===== */
+      .print-charts-row,
+      .recharts-wrapper,
+      .recharts-responsive-container,
+      [class*="h-[280px]"],
+      [class*="h-[300px]"],
+      [class*="h-[320px]"] { display: none !important; }
+
+      /* Compact header */
+      header { background: linear-gradient(90deg,#b45309,#facc15) !important; }
+      header > div { padding: 1.5mm 4mm !important; gap: 3px !important; }
+      header h1 { font-size: 11pt !important; margin: 0 !important; line-height: 1 !important; }
+      header p  { font-size: 6pt !important; margin: 0 !important; }
+      header .rounded-2xl { padding: 3px !important; }
+      header svg { width: 14px !important; height: 14px !important; }
+
+      /* Main content ultra-tight */
+      main > div { padding: 1mm 4mm 0 !important; max-width: 100% !important; }
+      main .space-y-8 > * + * { margin-top: 1mm !important; }
+      main .space-y-6 > * + * { margin-top: 0.5mm !important; }
+      main .space-y-5 > * + * { margin-top: 0.5mm !important; }
+      main .space-y-4 > * + * { margin-top: 0.3mm !important; }
+      main .space-y-3 > * + * { margin-top: 0.2mm !important; }
+      .gap-6, .gap-5 { gap: 1.5mm !important; }
+
+      /* Cards: no shadow, thin border */
+      .shadow-card {
+        box-shadow: none !important;
+        border: 0.4px solid #cbd5e1 !important;
+        border-radius: 3px !important;
+        padding: 2px 4px !important;
+      }
+      .rounded-2xl { border-radius: 3px !important; }
+      .rounded-xl  { border-radius: 2px !important; }
+
+      /* Summary hero (4 cards) — tiny */
+      .print-summary-hero { gap: 1.5px !important; }
+      .print-summary-hero .text-2xl { font-size: 9pt !important; line-height: 1 !important; }
+      .print-summary-hero .text-sm  { font-size: 6pt !important; }
+      .print-summary-hero .text-xs  { font-size: 5pt !important; line-height: 1 !important; }
+      .print-summary-hero .w-9 { width: 14px !important; height: 14px !important; }
+      .print-summary-hero svg { width: 10px !important; height: 10px !important; }
+      .print-summary-hero .p-5 { padding: 2px 3px !important; }
+      .print-summary-hero .gap-3 { gap: 1.5px !important; }
+
+      /* DetailedSummary: 2 columns */
+      .print-detail-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 2mm !important;
+      }
+      .print-detail-grid h3 { font-size: 8pt !important; margin-bottom: 2px !important; }
+      .print-detail-grid .text-base { font-size: 7.5pt !important; }
+      .print-detail-grid .text-lg { font-size: 8.5pt !important; line-height: 1.1 !important; }
+      .print-detail-grid .text-xl { font-size: 10pt !important; }
+      .print-detail-grid .text-xs, .print-detail-grid p { font-size: 6.5pt !important; line-height: 1.1 !important; }
+      .print-detail-grid .text-\[11px\] { font-size: 6pt !important; }
+      .print-detail-grid .text-\[10px\] { font-size: 5.5pt !important; }
+      .print-detail-grid .p-3\.5 { padding: 2px 4px !important; }
+      .print-detail-grid .p-5 { padding: 3px 5px !important; }
+      .print-detail-grid .w-10 { width: 16px !important; height: 16px !important; }
+      .print-detail-grid svg { width: 10px !important; height: 10px !important; }
+      .print-detail-grid .mb-4 { margin-bottom: 2px !important; }
+      .print-detail-grid .pb-3 { padding-bottom: 1px !important; }
+      .print-detail-grid .gap-3 { gap: 2px !important; }
+      .print-detail-grid .gap-5 { gap: 3px !important; }
+      .print-detail-grid .border-b { border-bottom-width: 0.5px !important; }
+
+      /* Print-only input snapshot banner */
+      .print-input-snapshot {
+        font-size: 5.5pt !important;
+        padding: 1px 4mm !important;
+        line-height: 1.15 !important;
+        background: #fffbeb;
+        border-bottom: 0.4px solid #fde68a;
+        color: #78350f;
+      }
+
+      /* Footer compact */
+      footer {
+        font-size: 5pt !important;
+        padding: 0.5mm 0 0 !important;
+        margin-top: 0.5mm !important;
+        line-height: 1 !important;
+        border-top: 0.3px solid #e2e8f0;
+      }
+
+      /* Prevent page breaks */
+      .shadow-card, .print-keep-together, header, footer {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div class="boot">
+      <div class="spin"></div>
+      <span>กำลังโหลดแอปพลิเคชัน...</span>
+    </div>
+  </div>
+
+  <script type="text/babel" data-presets="react">
+  /* eslint-disable */
+  const { useState, useMemo, useEffect } = React;
+  const {
+    LineChart, Line, BarChart, Bar,
+    XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+    ResponsiveContainer, ReferenceDot,
+  } = Recharts;
+
+  // ==========================================================================
+  // CONSTANTS + TARIFF + REGIONS
+  // ==========================================================================
+  const DAYS_PER_MONTH = 30;                                           // for appliance kWh
+  const DAYS_IN_MONTH  = [31,28,31,30,31,30,31,31,30,31,30,31];       // for solar generation
+  const MONTHS_PER_YEAR= 12;
+  const PROJECTION_YEARS = 10;
+
+  // Monthly Peak Sun Hours (kWh/m²/day) by Thai region
+  // Approximated from PVGIS-SARAH2 + DEDE (กรมพัฒนาพลังงานทดแทน) data
+  const REGIONS = {
+    central: {
+      name: 'ภาคกลาง / กรุงเทพฯ',
+      psh:  [4.8, 5.2, 5.5, 5.3, 4.8, 4.3, 4.0, 3.8, 3.9, 4.3, 4.7, 4.8],
+    },
+    north: {
+      name: 'ภาคเหนือ / เชียงใหม่',
+      psh:  [4.7, 5.3, 5.6, 5.5, 5.0, 4.4, 4.1, 4.0, 4.2, 4.5, 4.6, 4.5],
+    },
+    northeast: {
+      name: 'ภาคอีสาน / ขอนแก่น',
+      psh:  [5.0, 5.4, 5.7, 5.5, 5.0, 4.6, 4.4, 4.2, 4.3, 4.7, 4.9, 4.9],
+    },
+    east: {
+      name: 'ภาคตะวันออก / ระยอง-ชลบุรี',
+      psh:  [4.9, 5.3, 5.6, 5.4, 4.9, 4.5, 4.2, 4.1, 4.2, 4.5, 4.8, 4.9],
+    },
+    southGulf: {
+      name: 'ภาคใต้ฝั่งอ่าวไทย / สงขลา',
+      psh:  [4.3, 4.8, 5.2, 5.3, 5.0, 4.7, 4.5, 4.5, 4.4, 4.2, 3.9, 4.0],
+    },
+    southAndaman: {
+      name: 'ภาคใต้ฝั่งอันดามัน / ภูเก็ต',
+      psh:  [4.7, 5.0, 5.3, 5.4, 4.8, 4.5, 4.4, 4.3, 4.4, 4.5, 4.4, 4.5],
+    },
+  };
+
+  const DEFAULT_REGION = 'central';
+  const DEFAULT_PR     = 0.78;  // Performance Ratio (typical Thai rooftop)
+
+  function avgPsh(region) {
+    return REGIONS[region].psh.reduce((a, b) => a + b, 0) / 12;
+  }
+
+  // ---- Equipment defaults ----
+  const DEFAULT_EQUIPMENT = {
+    panels:   { watts: 550, count: 10, brand: '' },
+    inverter: { capacityKw: 5, efficiency: 96, type: 'string', brand: '' },
+    battery:  { enabled: false, capacityKwh: 5, efficiency: 90 },
+    mounting: { tilt: 15, azimuth: 'south' },  // azimuth: south | east | west | north
+  };
+
+  const DEFAULT_ADVANCED = {
+    rateEscalation:   { enabled: false, rate: 3 },     // % per year
+    panelDegradation: { enabled: false, rate: 0.5 },   // % per year
+    netMetering:      { enabled: false, rate: 2.20 },   // THB/kWh buyback
+    darkMode: false,
+  };
+
+  function panelTotalKw(eq)     { return (eq.panels.watts * eq.panels.count) / 1000; }
+  function effectiveSystemKw(eq){ return Math.min(panelTotalKw(eq), eq.inverter.capacityKw); }
+  function dcAcRatio(eq)        { return eq.inverter.capacityKw > 0 ? panelTotalKw(eq) / eq.inverter.capacityKw : 0; }
+
+  function azimuthFactor(az) {
+    return ({ south: 1.0, east: 0.93, west: 0.93, north: 0.78 })[az] || 1.0;
+  }
+  function tiltFactor(tilt) {
+    // Optimal ~15° for Thailand (latitude). ~0.5% loss per degree off
+    return Math.max(0.85, 1 - 0.005 * Math.abs(tilt - 15));
+  }
+  function clippingFactor(eq) {
+    const r = dcAcRatio(eq);
+    return r > 1.2 ? Math.max(0.92, 1 - (r - 1.2) * 0.05) : 1.0;
+  }
+  /** Adjusted PR derived from equipment specs */
+  function adjustedPR(eq) {
+    const inv  = (eq.inverter.efficiency || 96) / 100;
+    const tilt = tiltFactor(eq.mounting.tilt);
+    const azim = azimuthFactor(eq.mounting.azimuth);
+    const clip = clippingFactor(eq);
+    // Base 0.85 (cabling + soiling + thermal) × inverter × tilt × azimuth × clipping
+    return 0.85 * inv * tilt * azim * clip;
+  }
+
+  // Default Thai residential tariff approximations (incl. Ft + VAT, edit as needed)
+  // Flat:    ~4.5 THB/kWh (PEA/MEA Type 1)
+  // TOU:     On-peak  ~5.80 THB/kWh (จันทร์–ศุกร์ 09:00–22:00)
+  //          Off-peak ~2.63 THB/kWh (อื่น ๆ + เสาร์–อาทิตย์ + วันหยุด)
+  const DEFAULT_TARIFF = {
+    mode: 'flat',          // 'flat' | 'tou'
+    flatRate:    4.50,
+    onPeakRate:  5.80,
+    offPeakRate: 2.63,
+  };
+
+  /** Effective rate weighted by daytime % (used to convert THB bill -> kWh) */
+  function effectiveRate(tariff, daytimePct) {
+    if (tariff.mode === 'flat') return tariff.flatRate;
+    const d = Math.max(0, Math.min(100, daytimePct)) / 100;
+    return tariff.onPeakRate * d + tariff.offPeakRate * (1 - d);
+  }
+
+  // ==========================================================================
+  // APPLIANCE CATALOG
+  // ==========================================================================
+  // Days of week: index 0=จ (Mon) ... 6=อา (Sun); 5,6 = weekend (all off-peak)
+  const ALL_DAYS    = [true,  true,  true,  true,  true,  true,  true];
+  const WEEKDAYS    = [true,  true,  true,  true,  true,  false, false];
+  const WEEKEND     = [false, false, false, false, false, true,  true];
+  const DAY_LABELS  = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
+  const DAY_FULL    = ['จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์','อาทิตย์'];
+
+  // Window definitions (Thai TOU + solar)
+  const ON_PEAK_START = 9;   // 09:00
+  const ON_PEAK_END   = 22;  // 22:00 (weekdays only)
+  const SOLAR_START   = 6;   // ~06:00
+  const SOLAR_END     = 18;  // ~18:00
+
+  const WEEKDAY_FRACTION = 5/7;
+  const WEEKEND_FRACTION = 2/7;
+  // Within solar window (6-18 = 12 hrs): on-peak (9-18 = 9 hrs) vs off-peak (6-9 = 3 hrs)
+  const SOLAR_WINDOW_ONPEAK_RATIO  = 9/12;
+  const SOLAR_WINDOW_OFFPEAK_RATIO = 3/12;
+  // Within night window (18-6 = 12 hrs): on-peak (18-22 = 4 hrs) vs off-peak (22-6 = 8 hrs)
+  const NIGHT_WINDOW_ONPEAK_RATIO  = 4/12;
+  const NIGHT_WINDOW_OFFPEAK_RATIO = 8/12;
+
+  /** List of running hours (0..23) given start/end. Handles full-day & midnight wrap. */
+  function runningHours(start, end) {
+    const s = Math.max(0, Math.min(24, Number(start) || 0));
+    const e = Math.max(0, Math.min(24, Number(end)   || 0));
+    if (s === 0 && e === 24) return Array.from({ length: 24 }, (_, i) => i);
+    if (s === e) return [];
+    const out = [];
+    if (e > s) {
+      for (let h = Math.floor(s); h < Math.ceil(e); h++) out.push(h);
+    } else {
+      for (let h = Math.floor(s); h < 24; h++) out.push(h);
+      for (let h = 0; h < Math.ceil(e); h++) out.push(h);
+    }
+    return out;
+  }
+  function isOnPeakHour(h)  { return h >= ON_PEAK_START && h < ON_PEAK_END; }
+  function isSolarHour(h)   { return h >= SOLAR_START   && h < SOLAR_END;   }
+  function formatHour(h) {
+    const hr = Math.floor(h);
+    const mn = Math.round((h - hr) * 60);
+    return String(hr).padStart(2,'0') + ':' + String(mn).padStart(2,'0');
+  }
+
+  // Defaults: typical times of day people use these appliances
+  const DEFAULT_SEER = 13;  // typical Thai inverter AC
+  const APPLIANCE_CATALOG = [
+    { key: 'ac9000',     name: 'เครื่องปรับอากาศ 9,000 BTU',  btu: 9000,  watts: 692,   defaultSeer: DEFAULT_SEER, loadFactor: 0.55, defaultStart: 18, defaultEnd: 24, defaultDays: ALL_DAYS },
+    { key: 'ac12000',    name: 'เครื่องปรับอากาศ 12,000 BTU', btu: 12000, watts: 923,   defaultSeer: DEFAULT_SEER, loadFactor: 0.55, defaultStart: 18, defaultEnd: 24, defaultDays: ALL_DAYS },
+    { key: 'ac18000',    name: 'เครื่องปรับอากาศ 18,000 BTU', btu: 18000, watts: 1385,  defaultSeer: DEFAULT_SEER, loadFactor: 0.55, defaultStart: 18, defaultEnd: 24, defaultDays: ALL_DAYS },
+    { key: 'ac24000',    name: 'เครื่องปรับอากาศ 24,000 BTU', btu: 24000, watts: 1846,  defaultSeer: DEFAULT_SEER, loadFactor: 0.55, defaultStart: 18, defaultEnd: 24, defaultDays: ALL_DAYS },
+    { key: 'ac36000',    name: 'เครื่องปรับอากาศ 36,000 BTU', btu: 36000, watts: 2769,  defaultSeer: DEFAULT_SEER, loadFactor: 0.55, defaultStart: 18, defaultEnd: 24, defaultDays: ALL_DAYS },
+    { key: 'evcharge7',  name: 'เครื่องชาร์จรถ EV (7 kW)',     watts: 7000,  defaultStart: 22, defaultEnd: 4,  defaultDays: ALL_DAYS },
+    { key: 'evcharge11', name: 'เครื่องชาร์จรถ EV (11 kW)',    watts: 11000, defaultStart: 22, defaultEnd: 3,  defaultDays: ALL_DAYS },
+    { key: 'waterheater',name: 'เครื่องทำน้ำอุ่น (3.5 kW)',    watts: 3500,  defaultStart: 6,  defaultEnd: 7,  defaultDays: ALL_DAYS },
+    { key: 'iron',       name: 'เตารีดไฟฟ้า',                  watts: 1200,  defaultStart: 6,  defaultEnd: 7,  defaultDays: WEEKDAYS },
+    { key: 'microwave',  name: 'ไมโครเวฟ',                     watts: 1000,  defaultStart: 12, defaultEnd: 13, defaultDays: ALL_DAYS },
+    { key: 'washing',    name: 'เครื่องซักผ้า',                 watts: 500,   defaultStart: 9,  defaultEnd: 10, defaultDays: WEEKEND  },
+    { key: 'dryer',      name: 'เครื่องอบผ้า',                  watts: 2500,  defaultStart: 10, defaultEnd: 11, defaultDays: WEEKEND  },
+    { key: 'pool',       name: 'ปั๊มสระว่ายน้ำ',                 watts: 1500,  defaultStart: 9,  defaultEnd: 13, defaultDays: ALL_DAYS },
+    { key: 'oven',       name: 'เตาอบไฟฟ้า',                   watts: 2000,  defaultStart: 18, defaultEnd: 19, defaultDays: ALL_DAYS },
+    { key: 'fridge',     name: 'ตู้เย็น (ขนาดใหญ่)',             watts: 200,   loadFactor: 0.35, defaultStart: 0,  defaultEnd: 24, defaultDays: ALL_DAYS },
+    { key: 'tv',         name: 'ทีวี LED 55"',                 watts: 120,   defaultStart: 19, defaultEnd: 23, defaultDays: ALL_DAYS },
+    { key: 'desktop',    name: 'คอมพิวเตอร์ตั้งโต๊ะ',            watts: 350,   defaultStart: 9,  defaultEnd: 17, defaultDays: WEEKDAYS },
+    { key: 'custom',     name: 'อื่นๆ (กำหนดเอง)',              watts: 1000,  defaultStart: 12, defaultEnd: 13, defaultDays: ALL_DAYS },
+  ];
+
+  /** Allow empty input for better UX — backspace works without snapping to 0 */
+  function nv(v) { return v === '' ? '' : Number(v); }
+
+  function createAppliance(t) {
+    return {
+      id: t.key + '-' + Date.now() + '-' + Math.random().toString(36).slice(2,7),
+      name: t.name, watts: t.watts, quantity: 1,
+      btu: t.btu || null,
+      seer: t.defaultSeer || null,
+      loadFactor: t.loadFactor != null ? t.loadFactor : 1.0,
+      startHour:  t.defaultStart != null ? t.defaultStart : 18,
+      endHour:    t.defaultEnd   != null ? t.defaultEnd   : 22,
+      daysOfWeek: t.defaultDays  ? [...t.defaultDays] : [...ALL_DAYS],
+    };
+  }
+
+  // ==========================================================================
+  // CALCULATION ENGINE (tariff-aware)
+  // ==========================================================================
+  /**
+   * Classify each running hour into 4 mutually-exclusive buckets:
+   *
+   *   ┌──────────────────┬───────────────────┬──────────────────┐
+   *   │                  │  Solar (06–18)    │  No Solar        │
+   *   ├──────────────────┼───────────────────┼──────────────────┤
+   *   │ Weekday on-peak  │ solarOnPeak       │ noSolarOnPeak ⚠  │  ← can't offset!
+   *   │ (Mon–Fri 09–22)  │ (best — solar at  │ (pay on-peak rate│
+   *   │                  │  on-peak rate)    │  with no sun)    │
+   *   ├──────────────────┼───────────────────┼──────────────────┤
+   *   │ Off-peak         │ solarOffPeak      │ noSolarOffPeak   │
+   *   │                  │ (solar at off-pk) │ (battery only)   │
+   *   └──────────────────┴───────────────────┴──────────────────┘
+   *
+   * Weekend hours are ALL off-peak under Thai TOU, regardless of the time of day.
+   * Solar can offset any hour in 06–18 (weekday OR weekend).
+   */
+  function applianceKwhSplit(a) {
+    const days = a.daysOfWeek || ALL_DAYS;
+    const weekdayCount = days.slice(0, 5).filter(Boolean).length;
+    const weekendCount = days.slice(5, 7).filter(Boolean).length;
+    const wkdDays = weekdayCount * (30 / 7);
+    const wkeDays = weekendCount * (30 / 7);
+
+    const hours    = runningHours(a.startHour, a.endHour);
+    const totalHrs = hours.length;
+
+    // Hour counts for the 4 buckets
+    let wkdSolarOnPeakHrs    = 0;   // weekday, in 9–18 (solar AND on-peak)
+    let wkdSolarOffPeakHrs   = 0;   // weekday, in 6–9 (solar AND off-peak)
+    let wkdNoSolarOnPeakHrs  = 0;   // weekday, in 18–22 (on-peak NO sun) ⚠ THE PROBLEM HOURS
+    let wkdNoSolarOffPeakHrs = 0;   // weekday, in 22–6 (off-peak NO sun)
+    let wkeSolarHrs          = 0;   // weekend, in 6–18 (solar, billed off-peak)
+    let wkeNoSolarHrs        = 0;   // weekend, outside 6–18 (no sun, off-peak)
+
+    for (const h of hours) {
+      const onPeak = isOnPeakHour(h);
+      const solar  = isSolarHour(h);
+      // Weekday classification
+      if (solar  && onPeak) wkdSolarOnPeakHrs++;
+      if (solar  && !onPeak) wkdSolarOffPeakHrs++;
+      if (!solar && onPeak) wkdNoSolarOnPeakHrs++;
+      if (!solar && !onPeak) wkdNoSolarOffPeakHrs++;
+      // Weekend classification (always off-peak billing)
+      if (solar)  wkeSolarHrs++;
+      else        wkeNoSolarHrs++;
+    }
+
+    const lf = Number(a.loadFactor) || 1.0;  // load factor / duty cycle
+    const W = (Number(a.watts) * Math.max(Number(a.quantity), 1) * lf) / 1000;   // effective kW
+
+    // Monthly kWh per bucket
+    const solarOnPeakKwh    = W * wkdSolarOnPeakHrs    * wkdDays;
+    const solarOffPeakKwh   = W * wkdSolarOffPeakHrs   * wkdDays + W * wkeSolarHrs   * wkeDays;
+    const noSolarOnPeakKwh  = W * wkdNoSolarOnPeakHrs  * wkdDays;
+    const noSolarOffPeakKwh = W * wkdNoSolarOffPeakHrs * wkdDays + W * wkeNoSolarHrs * wkeDays;
+
+    // Billing: pay on-peak rate iff hour is in weekday on-peak window
+    const onPeakBilledKwh   = solarOnPeakKwh + noSolarOnPeakKwh;
+    const offPeakBilledKwh  = solarOffPeakKwh + noSolarOffPeakKwh;
+
+    // Solar-offsettable (must be in solar window) vs not (need grid or battery)
+    const dayKwh   = solarOnPeakKwh + solarOffPeakKwh;
+    const nightKwh = noSolarOnPeakKwh + noSolarOffPeakKwh;
+    const totalKwh = dayKwh + nightKwh;
+
+    // Hour counts for UI (weekday-only counts; weekend is shown via days-of-week toggle)
+    const onPeakHrs         = wkdSolarOnPeakHrs + wkdNoSolarOnPeakHrs;   // weekday on-peak
+    const offPeakHrs        = wkdSolarOffPeakHrs + wkdNoSolarOffPeakHrs; // weekday off-peak
+    const solarHrs          = wkdSolarOnPeakHrs + wkdSolarOffPeakHrs;    // weekday solar window
+    const noSolarOnPeakHrs  = wkdNoSolarOnPeakHrs;                       // ⚠ on-peak no sun
+    const noSolarOffPeakHrs = wkdNoSolarOffPeakHrs;                      // off-peak no sun
+
+    return {
+      // Per-bucket kWh
+      solarOnPeakKwh, solarOffPeakKwh, noSolarOnPeakKwh, noSolarOffPeakKwh,
+      // Aggregate kWh
+      dayKwh, nightKwh, totalKwh,
+      onPeakBilledKwh, offPeakBilledKwh,
+      // Hour breakdown (for UI)
+      weekdayCount, weekendCount,
+      onPeakHrs, offPeakHrs, solarHrs, totalHrs,
+      noSolarOnPeakHrs, noSolarOffPeakHrs,
+    };
+  }
+
+  function appliancesDayKwh(items) {
+    return items.reduce((s, a) => s + applianceKwhSplit(a).dayKwh, 0);
+  }
+  function appliancesNightKwh(items) {
+    return items.reduce((s, a) => s + applianceKwhSplit(a).nightKwh, 0);
+  }
+  function appliancesSolarOnPeak(items) {
+    return items.reduce((s, a) => s + applianceKwhSplit(a).solarOnPeakKwh, 0);
+  }
+  function appliancesSolarOffPeak(items) {
+    return items.reduce((s, a) => s + applianceKwhSplit(a).solarOffPeakKwh, 0);
+  }
+  function appliancesOnPeakBilled(items) {
+    return items.reduce((s, a) => s + applianceKwhSplit(a).onPeakBilledKwh, 0);
+  }
+  function appliancesOffPeakBilled(items) {
+    return items.reduce((s, a) => s + applianceKwhSplit(a).offPeakBilledKwh, 0);
+  }
+  function appliancesMonthlyKwh(items) {
+    return appliancesDayKwh(items) + appliancesNightKwh(items);
+  }
+
+  function consumptionFromInput(input, tariff) {
+    if (input.mode === 'estimated') {
+      // Bill -> kWh using a weighted average rate based on daytime split
+      const avgRate = effectiveRate(tariff, input.daytimeUsagePercent);
+      const monthlyKwh = avgRate > 0 ? input.monthlyBillTHB / avgRate : 0;
+      const daytimeKwh   = monthlyKwh * (input.daytimeUsagePercent / 100);
+      const nighttimeKwh = monthlyKwh - daytimeKwh;
+
+      // Approximate on-peak/off-peak split for billing & solar offset.
+      //   Weekday: 5/7 days; weekend: 2/7 days
+      //   Within solar window 6-18 (12 hrs): 9-18 (9 hrs) is on-peak, 6-9 (3 hrs) is off-peak
+      //   Within night window 18-6  (12 hrs): 18-22 (4 hrs) is on-peak, 22-6 (8 hrs) is off-peak
+      const dayWkd  = daytimeKwh   * WEEKDAY_FRACTION;
+      const dayWke  = daytimeKwh   * WEEKEND_FRACTION;
+      const nightWkd= nighttimeKwh * WEEKDAY_FRACTION;
+      const nightWke= nighttimeKwh * WEEKEND_FRACTION;
+
+      const solarOnPeakReplaceable  = dayWkd  * SOLAR_WINDOW_ONPEAK_RATIO;
+      const solarOffPeakReplaceable = dayWkd  * SOLAR_WINDOW_OFFPEAK_RATIO + dayWke;
+      const onPeakBilledKwh  = dayWkd * SOLAR_WINDOW_ONPEAK_RATIO + nightWkd * NIGHT_WINDOW_ONPEAK_RATIO;
+      const offPeakBilledKwh = monthlyKwh - onPeakBilledKwh;
+
+      return {
+        monthlyKwh, daytimeKwh, nighttimeKwh,
+        monthlyBillTHB: input.monthlyBillTHB,
+        onPeakBilledKwh, offPeakBilledKwh,
+        solarOnPeakReplaceable, solarOffPeakReplaceable,
+      };
+    }
+    // Detailed mode — use precise per-appliance hourly classification
+    const appOnPeakBilled  = appliancesOnPeakBilled(input.appliances);
+    const appOffPeakBilled = appliancesOffPeakBilled(input.appliances);
+    const appSolarOnPeak   = appliancesSolarOnPeak(input.appliances);
+    const appSolarOffPeak  = appliancesSolarOffPeak(input.appliances);
+    const applianceDay     = appliancesDayKwh(input.appliances);
+    const applianceNight   = appliancesNightKwh(input.appliances);
+
+    // Baseline (lighting, fridge, etc.) split using the same approximations
+    const baselineDay     = input.baselineKwhMonth * (input.baselineDaytimePercent / 100);
+    const baselineNight   = input.baselineKwhMonth - baselineDay;
+    const bDayWkd  = baselineDay   * WEEKDAY_FRACTION;
+    const bDayWke  = baselineDay   * WEEKEND_FRACTION;
+    const bNightWkd= baselineNight * WEEKDAY_FRACTION;
+    const bNightWke= baselineNight * WEEKEND_FRACTION;
+
+    const bSolarOnPeak  = bDayWkd  * SOLAR_WINDOW_ONPEAK_RATIO;          // weekday 9-18
+    const bSolarOffPeak = bDayWkd  * SOLAR_WINDOW_OFFPEAK_RATIO + bDayWke; // weekday 6-9 + weekend day
+    const bOnPeakBilled = bDayWkd  * SOLAR_WINDOW_ONPEAK_RATIO + bNightWkd * NIGHT_WINDOW_ONPEAK_RATIO;
+    const bOffPeakBilled= (baselineDay + baselineNight) - bOnPeakBilled;
+
+    const daytimeKwh   = applianceDay   + baselineDay;
+    const nighttimeKwh = applianceNight + baselineNight;
+    const monthlyKwh   = daytimeKwh + nighttimeKwh;
+
+    const onPeakBilledKwh         = appOnPeakBilled  + bOnPeakBilled;
+    const offPeakBilledKwh        = appOffPeakBilled + bOffPeakBilled;
+    const solarOnPeakReplaceable  = appSolarOnPeak   + bSolarOnPeak;
+    const solarOffPeakReplaceable = appSolarOffPeak  + bSolarOffPeak;
+
+    // Bill: TOU uses split rates; flat uses single rate
+    const monthlyBillTHB = tariff.mode === 'flat'
+      ? monthlyKwh * tariff.flatRate
+      : onPeakBilledKwh * tariff.onPeakRate + offPeakBilledKwh * tariff.offPeakRate;
+
+    return {
+      monthlyKwh, daytimeKwh, nighttimeKwh, monthlyBillTHB,
+      onPeakBilledKwh, offPeakBilledKwh,
+      solarOnPeakReplaceable, solarOffPeakReplaceable,
+    };
+  }
+
+  /** Array of 12 monthly solar generation values (kWh) */
+  function monthlySolarKwhArray(sizeKw, region, pr) {
+    const psh = REGIONS[region].psh;
+    return psh.map((p, i) => p * DAYS_IN_MONTH[i] * sizeKw * pr);
+  }
+  /** Total annual solar generation (kWh) */
+  function annualSolarKwh(sizeKw, region, pr) {
+    return monthlySolarKwhArray(sizeKw, region, pr).reduce((a, b) => a + b, 0);
+  }
+
+  function breakEvenYears(cost, savings) {
+    return savings <= 0 ? Infinity : cost / savings;
+  }
+
+  function recommendSystemSize(daytimeKwhMonth, region, pr, nighttimeKwhMonth = 0) {
+    if (daytimeKwhMonth <= 0) {
+      // No daytime usage; suggest small system for battery charging if night usage exists
+      return nighttimeKwhMonth > 0 ? 1.0 : 0;
+    }
+    // Annual avg PSH × ~30.4 days × PR for sizing
+    const ideal  = daytimeKwhMonth / (avgPsh(region) * (365 / 12) * pr);
+    const target = ideal * 0.9;
+    return Math.max(Math.round(target * 2) / 2, 1.0);
+  }
+
+  function calculate(input, system, tariff, region, pr, equipment, adv) {
+    const c = consumptionFromInput(input, tariff);
+    const { monthlyKwh, daytimeKwh, nighttimeKwh, monthlyBillTHB,
+            solarOnPeakReplaceable, solarOffPeakReplaceable } = c;
+
+    const monthlySolar = monthlySolarKwhArray(system.systemSizeKw, region, pr);
+    const annualGen    = monthlySolar.reduce((a, b) => a + b, 0);
+
+    // Month-by-month allocation:
+    // 1. Solar offsets on-peak demand FIRST (saves at on-peak rate — most valuable)
+    // 2. Then off-peak demand within solar window (weekday 6-9 + weekend daytime)
+    // 3. Excess solar charges battery → discharges at night (off-peak rate)
+    const battery = equipment ? equipment.battery : null;
+    const batMonthlyCap = (battery && battery.enabled)
+      ? battery.capacityKwh * (battery.efficiency / 100) * 30
+      : 0;
+
+    let annualOnPeakOff   = 0;
+    let annualOffPeakOff  = 0;
+    let annualBatteryOff  = 0;
+    let annualExcess      = 0;
+
+    for (let m = 0; m < 12; m++) {
+      const solarM = monthlySolar[m];
+      // Step 1: solar → on-peak demand
+      const onPeakUsed = Math.min(solarOnPeakReplaceable, solarM);
+      let remaining   = solarM - onPeakUsed;
+      // Step 2: solar → off-peak in solar window
+      const offPeakUsed = Math.min(solarOffPeakReplaceable, remaining);
+      remaining -= offPeakUsed;
+      // Step 3: battery — cap per-day to battery capacity for realism
+      let batteryUsed = 0;
+      if (battery && battery.enabled && remaining > 0) {
+        const eff = battery.efficiency / 100;
+        const daysInMonth = DAYS_IN_MONTH[m];
+        const dailyExcess = remaining / daysInMonth;
+        const dailyCharge = Math.min(dailyExcess, battery.capacityKwh) * eff;
+        const dailyNightDemand = nighttimeKwh;  // monthly night demand used as cap
+        batteryUsed = Math.min(dailyCharge * daysInMonth, dailyNightDemand);
+        remaining -= batteryUsed / eff;
+      }
+      annualOnPeakOff  += onPeakUsed;
+      annualOffPeakOff += offPeakUsed;
+      annualBatteryOff += batteryUsed;
+      annualExcess     += remaining;
+    }
+
+    const annualSolarOff = annualOnPeakOff + annualOffPeakOff;     // direct solar (no battery)
+    const annualTotalOff = annualSolarOff + annualBatteryOff;       // including battery
+
+    // Apply rates
+    const onPeakRate  = tariff.mode === 'flat' ? tariff.flatRate : tariff.onPeakRate;
+    const offPeakRate = tariff.mode === 'flat' ? tariff.flatRate : tariff.offPeakRate;
+    let yearly = annualOnPeakOff  * onPeakRate
+               + annualOffPeakOff * offPeakRate
+               + annualBatteryOff * offPeakRate;
+
+    // ⭐ Net Metering: sell wasted excess solar back to the grid (Year-1 revenue)
+    const nmEnabled = !!(adv && adv.netMetering && adv.netMetering.enabled);
+    const nmRate    = nmEnabled ? (Number(adv.netMetering.rate) || 2.20) : 0;
+    const nmRevenueYear = nmRate * annualExcess;
+    yearly += nmRevenueYear;
+
+    const annNoSolar  = monthlyBillTHB * MONTHS_PER_YEAR;
+    const annWith     = Math.max(annNoSolar - yearly, 0);
+    const recommended = recommendSystemSize(daytimeKwh, region, pr, nighttimeKwh);
+
+    // ⭐ Break-even: when escalation/degradation is on, simple cost÷savings is wrong.
+    //   Use projection (which respects rateFactor & solarFactor) and find the cross-over year.
+    let bev = breakEvenYears(system.installationCostTHB, yearly);
+    const hasYearlyAdv = !!(adv && (
+      (adv.rateEscalation   && adv.rateEscalation.enabled) ||
+      (adv.panelDegradation && adv.panelDegradation.enabled)
+    ));
+    if (hasYearlyAdv && yearly > 0) {
+      const tempResult = {
+        annualBillNoSolarTHB: annNoSolar,
+        annualSavingsTHB:     yearly,   // already includes nmRevenue
+      };
+      const proj = buildYearlyProjection(tempResult, system.installationCostTHB, adv, 30);
+      for (let y = 1; y <= 30; y++) {
+        const row = proj[y];
+        if (row && row.cumulativeWithSolar <= row.cumulativeNoSolar) {
+          // Linear-interpolate within the crossover year for sub-year accuracy
+          const prev = proj[y - 1];
+          if (prev) {
+            const prevDiff = prev.cumulativeWithSolar - prev.cumulativeNoSolar;
+            const currDiff = row.cumulativeWithSolar  - row.cumulativeNoSolar;
+            bev = (prevDiff > 0 && currDiff <= 0)
+              ? (y - 1) + prevDiff / (prevDiff - currDiff)
+              : y;
+          } else {
+            bev = y;
+          }
+          break;
+        }
+      }
+    }
+
+    // Coverage = how much of the *replaceable* demand was actually offset
+    const annualReplaceable = (solarOnPeakReplaceable + solarOffPeakReplaceable) * 12;
+    const coverage = annualReplaceable > 0
+      ? (annualSolarOff / annualReplaceable) * 100 : 0;
+
+    return {
+      monthlyKwh, daytimeKwh, nighttimeKwh, monthlyBillTHB,
+      onPeakBilledKwh: c.onPeakBilledKwh, offPeakBilledKwh: c.offPeakBilledKwh,
+      solarOnPeakReplaceable, solarOffPeakReplaceable,
+      monthlySolarKwh: annualGen / 12,
+      monthlySolarOffsetKwh: annualSolarOff / 12,
+      annualSolarKwh: annualGen,
+      annualSolarOffsetKwh: annualTotalOff,
+      annualDayOffsetKwh: annualSolarOff,
+      annualOnPeakOffsetKwh: annualOnPeakOff,
+      annualOffPeakOffsetKwh: annualOffPeakOff,
+      annualBatteryOffsetKwh: annualBatteryOff,
+      annualSolarExcessKwh: annualExcess,    // wasted solar (or sold via net metering)
+      annualNetMeteringTHB: nmRevenueYear,   // Year-1 net metering revenue (already in yearly)
+      annualSavingsTHB: yearly,              // includes net metering
+      annualBillNoSolarTHB: annNoSolar,
+      annualBillWithSolarTHB: annWith,
+      breakEvenYears: bev,
+      recommendedSizeKw: recommended,
+      coveragePercent: Math.min(coverage, 999),
+      effectiveRate: effectiveRate(tariff,
+        monthlyKwh > 0 ? (daytimeKwh / monthlyKwh) * 100 : 50),
+    };
+  }
+
+  function buildYearlyProjection(result, cost, adv, years = PROJECTION_YEARS) {
+    // NOTE: net metering revenue is already inside result.annualSavingsTHB
+    //       (added by calculate()). Don't double-count it here.
+    const rows = [];
+    let cumNo = 0, cumWith = cost;
+    const esc  = (adv && adv.rateEscalation && adv.rateEscalation.enabled)     ? (Number(adv.rateEscalation.rate) || 3) / 100   : 0;
+    const deg  = (adv && adv.panelDegradation && adv.panelDegradation.enabled) ? (Number(adv.panelDegradation.rate) || 0.5) / 100 : 0;
+    for (let y = 0; y <= years; y++) {
+      if (y > 0) {
+        const rateFactor  = Math.pow(1 + esc, y - 1);   // tariff goes up each year
+        const solarFactor = Math.pow(1 - deg, y - 1);   // panels degrade each year
+        const billNoSolar = result.annualBillNoSolarTHB * rateFactor;
+        // Savings escalate with rate AND degrade with panel — net metering revenue inside
+        const savings     = result.annualSavingsTHB * solarFactor * rateFactor;
+        cumNo   += billNoSolar;
+        cumWith += Math.max(billNoSolar - savings, 0);
+      }
+      rows.push({
+        year: y,
+        cumulativeNoSolar:   Math.round(cumNo),
+        cumulativeWithSolar: Math.round(cumWith),
+      });
+    }
+    return rows;
+  }
+
+  const THAI_MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+
+  /**
+   * Per-month breakdown for the chart — uses the SAME allocation as calculate():
+   *   1. Solar replaces on-peak demand first (highest savings)
+   *   2. Then off-peak demand within solar window
+   *   3. Excess goes to battery (if any) for nighttime offset
+   *   4. Whatever's left is "wasted" excess solar
+   */
+  function buildMonthlyBreakdown(result, system, region, pr, equipment) {
+    const monthlySolar = monthlySolarKwhArray(system.systemSizeKw, region, pr);
+    const onPeakRepl  = result.solarOnPeakReplaceable  || 0;
+    const offPeakRepl = result.solarOffPeakReplaceable || 0;
+    const battery = equipment ? equipment.battery : null;
+    const batMonthlyCap = (battery && battery.enabled)
+      ? battery.capacityKwh * (battery.efficiency / 100) * 30
+      : 0;
+    const batEff = (battery && battery.enabled) ? battery.efficiency / 100 : 0;
+    const nightDemand = result.nighttimeKwh || 0;
+
+    return THAI_MONTHS.map((label, i) => {
+      const solar = monthlySolar[i];
+      // Same allocation as calculate(): on-peak first, off-peak second, battery third
+      const onPeakUsed  = Math.min(onPeakRepl, solar);
+      let remaining     = solar - onPeakUsed;
+      const offPeakUsed = Math.min(offPeakRepl, remaining);
+      remaining        -= offPeakUsed;
+      let batteryUsed   = 0;
+      if (battery && battery.enabled && remaining > 0) {
+        const daysInMonth = DAYS_IN_MONTH[i];
+        const dailyExcess = remaining / daysInMonth;
+        const dailyCharge = Math.min(dailyExcess, battery.capacityKwh) * batEff;
+        batteryUsed = Math.min(dailyCharge * daysInMonth, nightDemand);
+        remaining  -= batteryUsed / batEff;
+      }
+      const directOffset  = onPeakUsed + offPeakUsed;
+      const totalOffset   = directOffset + batteryUsed;
+      const excess        = Math.max(remaining, 0);
+      const usage         = result.monthlyKwh;
+      const gridUsage     = Math.max(usage - totalOffset, 0);
+      return {
+        monthLabel:     label,
+        totalUsageKwh:  Math.round(usage),
+        solarOffsetKwh: Math.round(directOffset),
+        batteryOffsetKwh: Math.round(batteryUsed),
+        solarExcessKwh: Math.round(excess),
+        gridUsageKwh:   Math.round(gridUsage),
+        solarGenKwh:    Math.round(solar),
+        pshDay:         REGIONS[region].psh[i],
+      };
+    });
+  }
+
+  function formatTHB(v) {
+    if (!isFinite(v)) return '-';
+    return new Intl.NumberFormat('th-TH', {
+      style: 'currency', currency: 'THB', maximumFractionDigits: 0
+    }).format(v);
+  }
+  function formatRate(v) {
+    if (!isFinite(v)) return '-';
+    return new Intl.NumberFormat('th-TH', {
+      maximumFractionDigits: 2, minimumFractionDigits: 2
+    }).format(v) + ' บาท/หน่วย';
+  }
+  function formatNumber(v, d = 0) {
+    if (!isFinite(v)) return '-';
+    return new Intl.NumberFormat('th-TH', {
+      maximumFractionDigits: d, minimumFractionDigits: d
+    }).format(v);
+  }
+  function formatYears(v) {
+    if (!isFinite(v)) return 'ไม่คุ้มทุน';
+    const y = Math.floor(v);
+    const m = Math.round((v - y) * 12);
+    if (y === 0) return m + ' เดือน';
+    if (m === 0) return y + ' ปี';
+    return y + ' ปี ' + m + ' เดือน';
+  }
+  function clsx(...args) { return args.flat().filter(Boolean).join(' '); }
+
+  // ==========================================================================
+  // ICONS
+  // ==========================================================================
+  const Svg = ({ children, cn = 'w-4 h-4' }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+         fill="none" stroke="currentColor" strokeWidth="2"
+         strokeLinecap="round" strokeLinejoin="round" className={cn}>{children}</svg>
+  );
+  const SunIcon      = (p) => <Svg {...p}><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></Svg>;
+  const BanknoteIcon = (p) => <Svg {...p}><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></Svg>;
+  const WalletIcon   = (p) => <Svg {...p}><path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7"/><circle cx="17" cy="13" r="1.5"/></Svg>;
+  const SparkleIcon  = (p) => <Svg {...p}><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3zM5 17l.7 2L8 19.5l-2.3.5L5 22l-.7-2L2 19.5 4.3 19 5 17zM19 14l.5 1.5L21 16l-1.5.5L19 18l-.5-1.5L17 16l1.5-.5L19 14z"/></Svg>;
+  const CalcIcon     = (p) => <Svg {...p}><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01M8 18h8"/></Svg>;
+  const PiggyIcon    = (p) => <Svg {...p}><path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-7.5-1-10.5 1.5-3 2.5-3 6.5-1 9 0 0-.5 2 .5 2.5L8 20.5l1-1c1 .5 2.5 1 4 1s3-.5 4-1l1 1 3-.5c1-.5.5-2.5.5-2.5 .5-.5 1-1.5 1-3 0-1-.5-2-1-3 1-.5 2-1 2-2 0-2-1-2-3-2z"/><circle cx="9" cy="13" r="1"/></Svg>;
+  const TrendIcon    = (p) => <Svg {...p}><path d="M22 7L13.5 15.5 8.5 10.5 2 17"/><path d="M16 7h6v6"/></Svg>;
+  const ZapIcon      = (p) => <Svg {...p}><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></Svg>;
+  const PlusIcon     = (p) => <Svg {...p}><path d="M12 5v14M5 12h14"/></Svg>;
+  const TrashIcon    = (p) => <Svg {...p}><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></Svg>;
+  const ClockIcon    = (p) => <Svg {...p}><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></Svg>;
+  const MoonIcon     = (p) => <Svg {...p}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></Svg>;
+  const ChevronIcon  = (p) => <Svg {...p}><path d="M6 9l6 6 6-6"/></Svg>;
+  const LeafIcon     = (p) => <Svg {...p}><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10zM2 21c0-3 1.85-5.36 5.08-6"/></Svg>;
+  const GridIcon     = (p) => <Svg {...p}><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></Svg>;
+  const BatteryIcon  = (p) => <Svg {...p}><rect x="2" y="7" width="18" height="10" rx="2"/><path d="M22 11v2"/><path d="M6 10v4M10 10v4M14 10v4"/></Svg>;
+  const CompassIcon  = (p) => <Svg {...p}><circle cx="12" cy="12" r="10"/><path d="M16.24 7.76l-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12z"/></Svg>;
+  const PrinterIcon  = (p) => <Svg {...p}><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></Svg>;
+  const DownloadIcon = (p) => <Svg {...p}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></Svg>;
+  const BoxIcon      = (p) => <Svg {...p}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/></Svg>;
+  const CopyIcon     = (p) => <Svg {...p}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></Svg>;
+
+  // ==========================================================================
+  // INPUT MODE TOGGLES
+  // ==========================================================================
+  function ModeToggle({ mode, onChange }) {
+    const btn = (val, label) => (
+      <button onClick={() => onChange(val)}
+        className={clsx(
+          'px-5 py-2 rounded-lg text-sm font-medium transition',
+          mode === val
+            ? 'bg-white shadow-sm text-brand-600'
+            : 'text-ink-500 hover:text-ink-700'
+        )}>{label}</button>
+    );
+    return (
+      <div className="inline-flex bg-ink-100 rounded-xl p-1">
+        {btn('estimated', 'โหมดประเมินคร่าวๆ')}
+        {btn('detailed',  'โหมดละเอียด (ตามเครื่องใช้ไฟฟ้า)')}
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // ESTIMATED MODE
+  // ==========================================================================
+  function EstimatedMode({ value, onChange, tariff }) {
+    const avgRate = effectiveRate(tariff, value.daytimeUsagePercent);
+    const kwh = avgRate > 0 ? value.monthlyBillTHB / avgRate : 0;
+    return (
+      <div className="space-y-7">
+        <div>
+          <label className="flex items-center gap-2 text-sm font-medium text-ink-700 mb-3">
+            <BanknoteIcon cn="w-4 h-4 text-brand-500" />
+            ค่าไฟเฉลี่ยต่อเดือน
+          </label>
+          <div className="relative">
+            <input type="number" min={500} max={50000} step={100}
+              value={value.monthlyBillTHB}
+              onChange={(e) => onChange({ ...value, monthlyBillTHB: nv(e.target.value) })}
+              className="w-full px-4 py-3 pr-16 rounded-xl border border-ink-300 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-lg font-medium" />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-500 text-sm">บาท</span>
+          </div>
+          <input type="range" min={500} max={20000} step={100}
+            value={value.monthlyBillTHB}
+            onChange={(e) => onChange({ ...value, monthlyBillTHB: Number(e.target.value) })}
+            className="brand-slider w-full mt-4"
+            style={{ '--val': ((value.monthlyBillTHB - 500) / 19500) * 100 + '%' }} />
+          <div className="flex justify-between text-xs text-ink-500 mt-1">
+            <span>500</span><span>20,000</span>
+          </div>
+          <p className="text-xs text-ink-500 mt-3">
+            ≈ <strong>{formatNumber(kwh, 0)} kWh/เดือน</strong> · ค่าไฟต่อปี {formatTHB(value.monthlyBillTHB * 12)}
+            <br />อัตราเฉลี่ย {formatRate(avgRate)}
+          </p>
+        </div>
+
+        <div>
+          <label className="flex items-center justify-between text-sm font-medium text-ink-700 mb-3">
+            <span className="flex items-center gap-2">
+              <SunIcon cn="w-4 h-4 text-brand-500" />
+              สัดส่วนการใช้ไฟตอนกลางวัน
+            </span>
+            <span className="text-brand-600 text-base font-semibold">{value.daytimeUsagePercent}%</span>
+          </label>
+          <input type="range" min={10} max={90} step={1}
+            value={value.daytimeUsagePercent}
+            onChange={(e) => onChange({ ...value, daytimeUsagePercent: Number(e.target.value) })}
+            className="brand-slider w-full"
+            style={{ '--val': ((value.daytimeUsagePercent - 10) / 80) * 100 + '%' }} />
+          <div className="flex justify-between text-xs text-ink-500 mt-1">
+            <span>10% (อยู่บ้านน้อย)</span><span>90% (อยู่บ้านทั้งวัน)</span>
+          </div>
+          <p className="text-xs text-ink-500 mt-3">
+            ใช้กลางวันประมาณ <strong>{formatNumber((kwh * value.daytimeUsagePercent) / 100, 0)} kWh/เดือน</strong>
+            {' '}— โซลาร์เซลล์ผลิตไฟได้ตอนกลางวันเท่านั้น
+          </p>
+        </div>
+
+        {value.daytimeUsagePercent >= 60 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex items-start gap-2">
+            <SunIcon cn="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+            <div>
+              <strong>หมายเหตุ:</strong> สัดส่วน "กลางวัน" ในโหมดนี้อาจรวมถึงช่วง 18:00–22:00
+              (On-peak ที่ไม่มีแดด) ด้วย โซลาร์ผลิตไฟได้เฉพาะ 06:00–18:00 —
+              การประหยัดจริงอาจน้อยกว่าที่แสดงเล็กน้อย
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // DETAILED MODE
+  // ==========================================================================
+  function DetailedMode({ value, onChange, tariff }) {
+    const [selectedKey, setSelectedKey] = useState(APPLIANCE_CATALOG[0].key);
+
+    const addAppliance = () => {
+      const tpl = APPLIANCE_CATALOG.find(a => a.key === selectedKey);
+      if (!tpl) return;
+      onChange({ ...value, appliances: [...value.appliances, createAppliance(tpl)] });
+    };
+    const updateAppliance = (id, patch) => {
+      onChange({ ...value, appliances: value.appliances.map(a => a.id === id ? { ...a, ...patch } : a) });
+    };
+    const removeAppliance = (id) => {
+      onChange({ ...value, appliances: value.appliances.filter(a => a.id !== id) });
+    };
+    const duplicateAppliance = (id) => {
+      const idx = value.appliances.findIndex(a => a.id === id);
+      if (idx === -1) return;
+      const orig = value.appliances[idx];
+      const copy = {
+        ...orig,
+        id: 'dup-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+        name: orig.name + ' (สำเนา)',
+        daysOfWeek: [...(orig.daysOfWeek || ALL_DAYS)],
+      };
+      const next = [
+        ...value.appliances.slice(0, idx + 1),
+        copy,
+        ...value.appliances.slice(idx + 1),
+      ];
+      onChange({ ...value, appliances: next });
+    };
+
+    const applianceDay      = appliancesDayKwh(value.appliances);
+    const applianceNight    = appliancesNightKwh(value.appliances);
+    const appOnPeakBilled   = appliancesOnPeakBilled(value.appliances);
+    const appOffPeakBilled  = appliancesOffPeakBilled(value.appliances);
+    const baselineDay       = Number(value.baselineKwhMonth) * (Number(value.baselineDaytimePercent) / 100);
+    const baselineNight     = Number(value.baselineKwhMonth) - baselineDay;
+    const daytimeKwh        = applianceDay + baselineDay;
+    const nighttimeKwh      = applianceNight + baselineNight;
+    const totalKwh          = daytimeKwh + nighttimeKwh;
+    // Baseline on-peak/off-peak split for TOU bill
+    const bDayWkd   = baselineDay   * WEEKDAY_FRACTION;
+    const bNightWkd = baselineNight * WEEKDAY_FRACTION;
+    const bOnPeak   = bDayWkd * SOLAR_WINDOW_ONPEAK_RATIO + bNightWkd * NIGHT_WINDOW_ONPEAK_RATIO;
+    const bOffPeak  = Number(value.baselineKwhMonth) - bOnPeak;
+    const totalOnPeak  = appOnPeakBilled  + bOnPeak;
+    const totalOffPeak = appOffPeakBilled + bOffPeak;
+    // Bill: TOU uses real on-peak/off-peak split; flat uses single rate
+    const estBill = tariff.mode === 'flat'
+      ? totalKwh * tariff.flatRate
+      : totalOnPeak * tariff.onPeakRate + totalOffPeak * tariff.offPeakRate;
+
+    return (
+      <div className="space-y-6">
+        {/* TOU explainer */}
+        <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-900 flex items-start gap-2">
+          <ClockIcon cn="w-4 h-4 shrink-0 mt-0.5 text-blue-600" />
+          <div>
+            ระบุ<strong>เวลาเปิด-ปิด</strong>ของเครื่องใช้ไฟฟ้า ระบบจะคำนวณให้อัตโนมัติว่า
+            ตรงกับช่วงแดด (06:00-18:00),
+            <strong> On-peak</strong> (จ-ศ 09:00-22:00),
+            หรือ <strong>Off-peak</strong> (กลางคืน + ส-อา) กี่ชั่วโมง
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3">
+          <select value={selectedKey} onChange={(e) => setSelectedKey(e.target.value)}
+            className="flex-1 px-4 py-3 rounded-xl border border-ink-300 bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none">
+            {APPLIANCE_CATALOG.map(a => (
+              <option key={a.key} value={a.key}>
+                {a.name} ({a.watts.toLocaleString()} W)
+              </option>
+            ))}
+          </select>
+          <button onClick={addAppliance}
+            className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-medium transition shadow-sm">
+            <PlusIcon /> เพิ่มเครื่องใช้ไฟฟ้า
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          {value.appliances.length === 0 && (
+            <div className="text-center py-8 px-4 rounded-xl border-2 border-dashed border-ink-300 text-ink-500 text-sm">
+              ยังไม่มีรายการ — เพิ่มเครื่องใช้ไฟฟ้ากำลังสูง เช่น แอร์, EV charger
+            </div>
+          )}
+          {value.appliances.map(a => {
+            const days     = a.daysOfWeek || ALL_DAYS;
+            const split    = applianceKwhSplit(a);
+            const dayKwh   = split.dayKwh;
+            const nightKwh = split.nightKwh;
+            const totKwh   = split.totalKwh;
+            const noDays   = !days.some(Boolean);
+
+            const setDays = (newDays) =>
+              updateAppliance(a.id, { daysOfWeek: newDays });
+            const toggleDay = (i) => {
+              const d = [...days];
+              d[i] = !d[i];
+              setDays(d);
+            };
+
+            // Time options for dropdown (0–24)
+            const timeOptions = Array.from({ length: 25 }, (_, h) => h);
+
+            return (
+              <div key={a.id} className="bg-ink-100/50 rounded-xl p-3 space-y-2.5">
+                {/* Header: name + total + delete */}
+                <div className="flex items-center gap-2">
+                  <ZapIcon cn="w-4 h-4 text-brand-500 shrink-0" />
+                  <input type="text"
+                    value={a.name}
+                    onChange={(e) => updateAppliance(a.id, { name: e.target.value })}
+                    className="flex-1 min-w-[80px] text-sm font-medium text-ink-900 bg-transparent border-0 border-b border-transparent hover:border-ink-300 focus:border-brand-500 focus:outline-none px-1 py-0.5" />
+                  {Number(a.quantity) > 1 && (
+                    <span className="text-xs font-semibold text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full whitespace-nowrap"
+                      title={'รวม ' + formatNumber(Number(a.watts) * Number(a.quantity), 0) + ' W (' + (Number(a.watts) * Number(a.quantity) / 1000).toFixed(2) + ' kW)'}>
+                      × {formatNumber(Number(a.quantity), 0)}
+                    </span>
+                  )}
+                  <span className="text-sm text-ink-700 whitespace-nowrap font-semibold" title={formatNumber(totKwh / 30, 1) + ' kWh/วัน'}>
+                    {formatNumber(totKwh, 0)} kWh
+                    <span className="text-[10px] text-ink-500 font-normal ml-1">({formatNumber(totKwh / 30, 1)}/วัน)</span>
+                  </span>
+                  <button onClick={() => duplicateAppliance(a.id)} aria-label="ทำสำเนา" title="ทำสำเนา"
+                    className="p-1.5 rounded-lg text-ink-500 hover:text-brand-600 hover:bg-brand-50 transition">
+                    <CopyIcon cn="w-4 h-4" />
+                  </button>
+                  <button onClick={() => removeAppliance(a.id)} aria-label="ลบรายการ" title="ลบรายการ"
+                    className="p-1.5 rounded-lg text-ink-500 hover:text-red-600 hover:bg-red-50 transition">
+                    <TrashIcon cn="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Inputs: quantity, SEER (AC only), watts, start time, end time */}
+                <div className={clsx('grid gap-2', a.btu ? 'grid-cols-2 sm:grid-cols-5' : 'grid-cols-2 sm:grid-cols-4')}>
+                  <label className="block">
+                    <span className="text-[10px] text-ink-500 uppercase tracking-wide flex items-center justify-between">
+                      <span>จำนวน</span>
+                      {Number(a.quantity) > 1 && (
+                        <span className="text-brand-600 font-semibold normal-case tracking-normal">× {formatNumber(Number(a.quantity), 0)}</span>
+                      )}
+                    </span>
+                    <div className="flex items-stretch gap-0.5 mt-0.5">
+                      <input type="number" min={1} step={1} value={a.quantity}
+                        onChange={(e) => updateAppliance(a.id, { quantity: nv(e.target.value) })}
+                        onFocus={(e) => e.target.select()}
+                        inputMode="numeric"
+                        placeholder="1"
+                        title="ใส่จำนวนเท่าไรก็ได้ — ระบบจะคูณรวมให้อัตโนมัติ"
+                        className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-ink-300 text-sm bg-white" />
+                      <button type="button"
+                        title="+10"
+                        onClick={() => updateAppliance(a.id, { quantity: (Number(a.quantity) || 0) + 10 })}
+                        className="px-1.5 rounded-md text-[9px] font-medium bg-ink-100 hover:bg-brand-100 text-ink-700 hover:text-brand-700 border border-ink-300 transition shrink-0">
+                        +10
+                      </button>
+                      <button type="button"
+                        title="+100"
+                        onClick={() => updateAppliance(a.id, { quantity: (Number(a.quantity) || 0) + 100 })}
+                        className="px-1.5 rounded-md text-[9px] font-medium bg-ink-100 hover:bg-brand-100 text-ink-700 hover:text-brand-700 border border-ink-300 transition shrink-0">
+                        +100
+                      </button>
+                    </div>
+                  </label>
+                  {a.btu && (
+                    <label className="block">
+                      <span className="text-[10px] text-blue-700 uppercase tracking-wide flex items-center gap-1">
+                        <SparkleIcon cn="w-3 h-3" /> SEER
+                      </span>
+                      <input type="number" min={5} max={30} step={0.1} value={a.seer}
+                        onChange={(e) => {
+                          const s = nv(e.target.value);
+                          const w = (s !== '' && Number(s) > 0) ? Math.round(a.btu / Number(s)) : a.watts;
+                          updateAppliance(a.id, { seer: s, watts: w });
+                        }}
+                        className="w-full mt-0.5 px-2 py-1.5 rounded-lg border border-blue-200 text-sm bg-blue-50/40" />
+                    </label>
+                  )}
+                  <label className="block">
+                    <span className="text-[10px] text-ink-500 uppercase tracking-wide">
+                      วัตต์{a.btu ? ' (คำนวณ)' : ''}
+                    </span>
+                    <input type="number" min={0} step={50} value={a.watts}
+                      onChange={(e) => updateAppliance(a.id, { watts: nv(e.target.value), seer: null })}
+                      className={clsx('w-full mt-0.5 px-2 py-1.5 rounded-lg border text-sm bg-white',
+                        a.btu && a.seer ? 'border-blue-200 text-blue-700' : 'border-ink-300')} />
+                  </label>
+                  <label className="block">
+                    <span className="text-[10px] text-green-700 uppercase tracking-wide flex items-center gap-1">
+                      <ClockIcon cn="w-3 h-3" /> เปิดเวลา
+                    </span>
+                    <select value={a.startHour}
+                      onChange={(e) => updateAppliance(a.id, { startHour: Number(e.target.value) })}
+                      className="w-full mt-0.5 px-2 py-1.5 rounded-lg border border-green-200 text-sm bg-green-50/40">
+                      {timeOptions.slice(0, 24).map(h => (
+                        <option key={h} value={h}>{formatHour(h)}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-[10px] text-red-700 uppercase tracking-wide flex items-center gap-1">
+                      <ClockIcon cn="w-3 h-3" /> ปิดเวลา
+                    </span>
+                    <select value={a.endHour}
+                      onChange={(e) => updateAppliance(a.id, { endHour: Number(e.target.value) })}
+                      className="w-full mt-0.5 px-2 py-1.5 rounded-lg border border-red-200 text-sm bg-red-50/40">
+                      {timeOptions.map(h => (
+                        <option key={h} value={h}>{h === 24 ? '24:00' : formatHour(h)}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                {/* Power total breakdown — shown only when quantity > 1 */}
+                {Number(a.quantity) > 1 && (
+                  <div className="flex items-center gap-1.5 text-[10px] bg-brand-50/60 border border-brand-100 rounded-lg px-2 py-1">
+                    <SparkleIcon cn="w-3 h-3 text-brand-500 shrink-0" />
+                    <span className="text-ink-600">
+                      <strong className="text-brand-700">{formatNumber(Number(a.watts), 0)} W</strong>
+                      {' × '}
+                      <strong className="text-brand-700">{formatNumber(Number(a.quantity), 0)} อุปกรณ์</strong>
+                      {' = '}
+                      <strong className="text-brand-700">
+                        {formatNumber(Number(a.watts) * Number(a.quantity), 0)} W
+                        {' '}
+                        ({(Number(a.watts) * Number(a.quantity) / 1000).toFixed(2)} kW)
+                      </strong>
+                    </span>
+                  </div>
+                )}
+
+                {/* Load Factor — how much of rated power is actually consumed */}
+                <div className="flex items-center gap-2 text-[10px]">
+                  <span className="text-ink-500 whitespace-nowrap">⚡ ใช้จริง</span>
+                  <input type="range" min={10} max={100} step={5}
+                    value={Math.round((Number(a.loadFactor) || 1) * 100)}
+                    onChange={(e) => updateAppliance(a.id, { loadFactor: Number(e.target.value) / 100 })}
+                    className="flex-1 h-1.5 accent-brand-500" />
+                  <span className={clsx(
+                    'font-semibold min-w-[36px] text-right',
+                    (Number(a.loadFactor) || 1) < 0.7 ? 'text-green-700' : 'text-ink-700'
+                  )}>
+                    {Math.round((Number(a.loadFactor) || 1) * 100)}%
+                  </span>
+                  {a.btu && (Number(a.loadFactor) || 1) >= 0.9 && (
+                    <span className="text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-md">
+                      ⚠ แอร์ไม่ได้ใช้ไฟเต็มกำลังตลอด แนะนำ 50–65%
+                    </span>
+                  )}
+                </div>
+
+                {/* Time breakdown badges */}
+                <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-800 font-medium"
+                        title="ชั่วโมงที่อยู่ในช่วงแดด — โซลาร์ทดแทนได้">
+                    <SunIcon cn="w-3 h-3" /> โซลาร์ทดแทนได้ {split.solarHrs} ชม.
+                  </span>
+                  {split.noSolarOnPeakHrs > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-800 font-medium"
+                          title="ช่วง On-peak (18:00–22:00) ที่ไม่มีแดด — จ่ายอัตราแพงโดยไม่มีโซลาร์ช่วย">
+                      ⚠ On-peak ไม่มีแดด {split.noSolarOnPeakHrs} ชม.
+                    </span>
+                  )}
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium">
+                    <MoonIcon cn="w-3 h-3" /> Off-peak ไม่มีแดด {split.noSolarOffPeakHrs} ชม.
+                  </span>
+                  <span className="text-ink-500">
+                    (รวม {split.totalHrs} ชม./วัน)
+                  </span>
+                </div>
+
+                {/* Day-of-week selector */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] text-ink-500 uppercase tracking-wide whitespace-nowrap">
+                    ใช้วัน:
+                  </span>
+                  <div className="flex gap-1 flex-1 min-w-[180px]">
+                    {DAY_LABELS.map((lbl, i) => {
+                      const isWeekend = i >= 5;
+                      const active = days[i];
+                      return (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => toggleDay(i)}
+                          title={DAY_FULL[i] + (isWeekend ? ' (Off-peak ทั้งวัน)' : '')}
+                          className={clsx(
+                            'flex-1 py-1 text-[11px] font-medium rounded-md border transition',
+                            active
+                              ? isWeekend
+                                ? 'bg-blue-100 border-blue-300 text-blue-700'
+                                : 'bg-amber-100 border-amber-300 text-amber-700'
+                              : 'bg-white border-ink-300 text-ink-400 hover:border-ink-500'
+                          )}>
+                          {lbl}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="flex gap-1">
+                    <button type="button" onClick={() => setDays([...ALL_DAYS])}
+                      className="text-[10px] px-2 py-1 rounded-md bg-ink-100 hover:bg-ink-300/50 text-ink-700">
+                      ทุกวัน
+                    </button>
+                    <button type="button" onClick={() => setDays([...WEEKDAYS])}
+                      className="text-[10px] px-2 py-1 rounded-md bg-ink-100 hover:bg-ink-300/50 text-ink-700">
+                      จ–ศ
+                    </button>
+                    <button type="button" onClick={() => setDays([...WEEKEND])}
+                      className="text-[10px] px-2 py-1 rounded-md bg-ink-100 hover:bg-ink-300/50 text-ink-700">
+                      ส–อา
+                    </button>
+                  </div>
+                </div>
+
+                {/* kWh split footer */}
+                <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-ink-300/40 flex-wrap gap-2">
+                  <div className="flex gap-2 text-ink-500">
+                    {noDays && <span className="text-red-600">⚠ ยังไม่ได้เลือกวันใดเลย</span>}
+                    {!noDays && (
+                      <span>
+                        ใช้ {split.weekdayCount + split.weekendCount} วัน/สัปดาห์
+                        {split.weekendCount > 0 && ` (รวม ส-อา ${split.weekendCount} วัน)`}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-3 ml-auto">
+                    <span className="text-red-600 flex items-center gap-1" title="จ-ศ 09:00–22:00">
+                      <ZapIcon cn="w-3 h-3" /> On-peak <strong>{formatNumber(split.onPeakBilledKwh, 0)}</strong> kWh
+                    </span>
+                    <span className="text-blue-600 flex items-center gap-1" title="จ-ศ 22:00–09:00 + ส-อา ทั้งวัน">
+                      <MoonIcon cn="w-3 h-3" /> Off-peak <strong>{formatNumber(split.offPeakBilledKwh, 0)}</strong> kWh
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="grid grid-cols-3 gap-3 text-center">
+          <div className="bg-white border border-ink-300 rounded-xl py-3">
+            <p className="text-[11px] text-ink-500">รวมต่อเดือน</p>
+            <p className="font-semibold text-ink-900">{formatNumber(totalKwh, 0)} kWh</p>
+          </div>
+          <div className="bg-white border border-ink-300 rounded-xl py-3">
+            <p className="text-[11px] text-ink-500">ค่าไฟต่อเดือน</p>
+            <p className="font-semibold text-ink-900">{formatTHB(estBill)}</p>
+          </div>
+          <div className="bg-white border border-ink-300 rounded-xl py-3">
+            <p className="text-[11px] text-ink-500">ค่าไฟต่อปี</p>
+            <p className="font-semibold text-ink-900">{formatTHB(estBill * 12)}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // TARIFF SETTINGS  ⭐ NEW
+  // ==========================================================================
+  function TariffSettings({ value, onChange }) {
+    const [open, setOpen] = useState(true);
+    const isFlat = value.mode === 'flat';
+
+    const setMode = (mode) => onChange({ ...value, mode });
+    const resetDefaults = () => onChange({ ...DEFAULT_TARIFF, mode: value.mode });
+
+    return (
+      <div className="bg-white rounded-2xl shadow-card p-6 space-y-5">
+        <button
+          onClick={() => setOpen(!open)}
+          className="w-full flex items-center justify-between gap-2 text-left">
+          <div>
+            <h2 className="text-lg font-semibold text-ink-900 flex items-center gap-2">
+              <ZapIcon cn="w-5 h-5 text-brand-500" />
+              อัตราค่าไฟฟ้า
+            </h2>
+            <p className="text-sm text-ink-500">
+              {isFlat
+                ? `อัตราเดียว · ${formatRate(value.flatRate)}`
+                : `TOU · On-peak ${formatRate(value.onPeakRate)} / Off-peak ${formatRate(value.offPeakRate)}`}
+            </p>
+          </div>
+          <ChevronIcon cn={clsx('w-5 h-5 text-ink-500 transition-transform', open && 'rotate-180')} />
+        </button>
+
+        {open && (
+          <>
+            {/* Mode toggle */}
+            <div className="inline-flex bg-ink-100 rounded-xl p-1 w-full">
+              <button onClick={() => setMode('flat')}
+                className={clsx(
+                  'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition',
+                  isFlat ? 'bg-white shadow-sm text-brand-600' : 'text-ink-500'
+                )}>อัตราเดียว (Flat)</button>
+              <button onClick={() => setMode('tou')}
+                className={clsx(
+                  'flex-1 px-4 py-2 rounded-lg text-sm font-medium transition',
+                  !isFlat ? 'bg-white shadow-sm text-brand-600' : 'text-ink-500'
+                )}>อัตรา TOU</button>
+            </div>
+
+            {/* Flat */}
+            {isFlat && (
+              <div>
+                <label className="text-sm font-medium text-ink-700 mb-2 block">
+                  ราคาต่อหน่วย
+                </label>
+                <div className="relative">
+                  <input type="number" min={0} step={0.01} value={value.flatRate}
+                    onChange={(e) => onChange({ ...value, flatRate: nv(e.target.value) })}
+                    className="w-full px-4 py-3 pr-24 rounded-xl border border-ink-300 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-lg font-medium" />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-500 text-sm">บาท/หน่วย</span>
+                </div>
+                <p className="text-xs text-ink-500 mt-2">
+                  อัตราเฉลี่ยที่อยู่อาศัย MEA/PEA ปัจจุบัน ~4.2–4.6 บาท/หน่วย (รวม Ft + VAT)
+                </p>
+              </div>
+            )}
+
+            {/* TOU */}
+            {!isFlat && (
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-ink-700 mb-2 flex items-center gap-2">
+                    <SunIcon cn="w-4 h-4 text-amber-500" />
+                    On-peak (ช่วงพีค)
+                  </label>
+                  <div className="relative">
+                    <input type="number" min={0} step={0.01} value={value.onPeakRate}
+                      onChange={(e) => onChange({ ...value, onPeakRate: nv(e.target.value) })}
+                      className="w-full px-4 py-3 pr-24 rounded-xl border border-ink-300 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-base font-medium" />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-500 text-xs">บาท/หน่วย</span>
+                  </div>
+                  <p className="text-[11px] text-ink-500 mt-1">จันทร์–ศุกร์ 09:00–22:00</p>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-ink-700 mb-2 flex items-center gap-2">
+                    <MoonIcon cn="w-4 h-4 text-blue-500" />
+                    Off-peak (ช่วงนอกพีค)
+                  </label>
+                  <div className="relative">
+                    <input type="number" min={0} step={0.01} value={value.offPeakRate}
+                      onChange={(e) => onChange({ ...value, offPeakRate: nv(e.target.value) })}
+                      className="w-full px-4 py-3 pr-24 rounded-xl border border-ink-300 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-base font-medium" />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-500 text-xs">บาท/หน่วย</span>
+                  </div>
+                  <p className="text-[11px] text-ink-500 mt-1">
+                    จันทร์–ศุกร์ 22:00–09:00 + เสาร์–อาทิตย์ + วันหยุดราชการ
+                  </p>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-900">
+                  <ClockIcon cn="w-4 h-4 inline mr-1 align-text-bottom" />
+                  TOU เหมาะกับบ้านที่ใช้ไฟกลางคืนเยอะ และคุ้มกับโซลาร์มากกว่า เพราะแสงแดด
+                  ทดแทนช่วง On-peak ที่แพง
+                </div>
+              </div>
+            )}
+
+            <button onClick={resetDefaults}
+              className="w-full text-xs text-ink-500 hover:text-brand-600 transition py-2">
+              คืนค่าเริ่มต้น (MEA/PEA)
+            </button>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // LOCATION & PERFORMANCE  ⭐ NEW
+  // ==========================================================================
+  function LocationSettings({ region, onRegionChange, pr, onPrChange }) {
+    const [open, setOpen] = useState(true);
+    const r = REGIONS[region];
+    const yearAvg = avgPsh(region);
+    const minIdx = r.psh.indexOf(Math.min(...r.psh));
+    const maxIdx = r.psh.indexOf(Math.max(...r.psh));
+    const prPct = Math.round(pr * 100);
+
+    return (
+      <div className="bg-white rounded-2xl shadow-card p-6 space-y-5">
+        <button onClick={() => setOpen(!open)}
+          className="w-full flex items-center justify-between gap-2 text-left">
+          <div>
+            <h2 className="text-lg font-semibold text-ink-900 flex items-center gap-2">
+              <SunIcon cn="w-5 h-5 text-brand-500" />
+              ตำแหน่งและประสิทธิภาพ
+            </h2>
+            <p className="text-sm text-ink-500">
+              {r.name} · {yearAvg.toFixed(2)} ชม./วัน · PR {prPct}%
+            </p>
+          </div>
+          <ChevronIcon cn={clsx('w-5 h-5 text-ink-500 transition-transform', open && 'rotate-180')} />
+        </button>
+
+        {open && <>
+
+        <div>
+          <label className="text-sm font-medium text-ink-700 mb-2 block">ภูมิภาค</label>
+          <select
+            value={region}
+            onChange={(e) => onRegionChange(e.target.value)}
+            className="w-full px-4 py-3 rounded-xl border border-ink-300 bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none">
+            {Object.entries(REGIONS).map(([key, reg]) => (
+              <option key={key} value={key}>{reg.name}</option>
+            ))}
+          </select>
+
+          <div className="grid grid-cols-3 gap-2 mt-3 text-center">
+            <div className="bg-ink-100/60 rounded-lg p-2">
+              <p className="text-[10px] text-ink-500 uppercase">เฉลี่ยทั้งปี</p>
+              <p className="text-sm font-semibold mt-0.5">{yearAvg.toFixed(2)} ชม./วัน</p>
+            </div>
+            <div className="bg-ink-100/60 rounded-lg p-2">
+              <p className="text-[10px] text-ink-500 uppercase">เดือนสูงสุด</p>
+              <p className="text-sm font-semibold mt-0.5">
+                {THAI_MONTHS[maxIdx]} · {r.psh[maxIdx].toFixed(1)}
+              </p>
+            </div>
+            <div className="bg-ink-100/60 rounded-lg p-2">
+              <p className="text-[10px] text-ink-500 uppercase">เดือนต่ำสุด</p>
+              <p className="text-sm font-semibold mt-0.5">
+                {THAI_MONTHS[minIdx]} · {r.psh[minIdx].toFixed(1)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <label className="flex items-center justify-between text-sm font-medium text-ink-700 mb-3">
+            <span>Performance Ratio (PR)</span>
+            <span className="text-brand-600 text-base font-semibold">{prPct}%</span>
+          </label>
+          <input type="range" min={60} max={90} step={1}
+            value={prPct}
+            onChange={(e) => onPrChange(Number(e.target.value) / 100)}
+            className="brand-slider w-full"
+            style={{ '--val': ((prPct - 60) / 30) * 100 + '%' }} />
+          <div className="flex justify-between text-xs text-ink-500 mt-1">
+            <span>60%</span><span>90%</span>
+          </div>
+          <p className="text-xs text-ink-500 mt-3">
+            หักการสูญเสียจาก inverter, สายไฟ, ฝุ่นบนแผง, อุณหภูมิแผงสูง
+            <br />ค่ามาตรฐานติดตั้งใหม่ในไทย <strong>75–80%</strong>
+            <br />ระบบมีอายุ/ทำความสะอาดน้อย <strong>65–72%</strong>
+          </p>
+        </div>
+
+        </>}
+      </div>
+    );
+  }
+
+  // (SystemCostInput removed — installation cost is now inside EquipmentSection,
+  //  and system size auto-syncs from equipment specs)
+
+  // ==========================================================================
+  // SUMMARY CARDS
+  // ==========================================================================
+  function SummaryCards({ result, system, tariff, adv }) {
+    const cov = result.coveragePercent;
+    let covColor = 'text-ink-500';
+    let covLabel = 'ระบบเล็กกว่าความต้องการ';
+    if (cov >= 80 && cov <= 110) { covColor = 'text-green-600'; covLabel = 'ขนาดเหมาะสม'; }
+    else if (cov > 110)          { covColor = 'text-amber-600'; covLabel = 'ระบบใหญ่เกินความจำเป็น'; }
+
+    // Average effective rate of the actual offset (mix of on-peak + off-peak + battery savings)
+    const totalOffsetKwh = (result.annualSolarOffsetKwh || 0);
+    const avgOffsetRate  = totalOffsetKwh > 0
+      ? (result.annualSavingsTHB - (result.annualNetMeteringTHB || 0)) / totalOffsetKwh
+      : 0;
+    // Detect which adv features are active
+    const hasEsc = !!(adv && adv.rateEscalation   && adv.rateEscalation.enabled);
+    const hasDeg = !!(adv && adv.panelDegradation && adv.panelDegradation.enabled);
+    const hasNm  = !!(adv && adv.netMetering      && adv.netMetering.enabled);
+    const advTags = [
+      hasEsc && '+ค่าไฟขึ้น ' + (adv.rateEscalation.rate || 3) + '%/ปี',
+      hasDeg && '−แผงเสื่อม ' + (adv.panelDegradation.rate || 0.5) + '%/ปี',
+      hasNm  && '+ขายคืน ' + (adv.netMetering.rate || 2.20) + '฿',
+    ].filter(Boolean).join(' · ');
+
+    const savingsHint = hasNm
+      ? 'รวมขายคืน ' + formatTHB(result.annualNetMeteringTHB || 0) + '/ปี'
+      : 'เฉลี่ย ' + formatRate(avgOffsetRate) + ' (ที่ทดแทนได้)';
+    const breakEvenHint = (hasEsc || hasDeg)
+      ? 'รวมค่าไฟขึ้น/แผงเสื่อมแล้ว · ' + formatTHB(system.installationCostTHB)
+      : 'จากต้นทุน ' + formatTHB(system.installationCostTHB);
+
+    const cards = [
+      { icon: <SunIcon cn="w-5 h-5" />,   label: 'ขนาดระบบที่แนะนำ',
+        value: result.recommendedSizeKw.toFixed(1) + ' kW',
+        hint: result.daytimeKwh <= 0 && result.nighttimeKwh > 0
+          ? 'ใช้ไฟกลางคืนเป็นหลัก — พิจารณาเพิ่มแบตเตอรี่'
+          : 'ครอบคลุมการใช้กลางวัน 80–100%', tone: 'brand' },
+      { icon: <CalcIcon cn="w-5 h-5" />,  label: 'จุดคุ้มทุน',
+        value: formatYears(result.breakEvenYears),
+        hint: breakEvenHint, tone: 'blue' },
+      { icon: <PiggyIcon cn="w-5 h-5" />, label: 'ประหยัดต่อปี',
+        value: formatTHB(result.annualSavingsTHB),
+        hint: savingsHint, tone: 'green' },
+      { icon: <TrendIcon cn="w-5 h-5" />, label: 'ครอบคลุมที่ทดแทนได้',
+        value: formatNumber(Math.min(cov, 999), 0) + '%', hint: covLabel,
+        tone: 'amber', valueClass: covColor },
+    ];
+    const tones = {
+      brand: 'bg-brand-50 text-brand-600',
+      blue:  'bg-blue-50 text-blue-600',
+      green: 'bg-green-50 text-green-600',
+      amber: 'bg-amber-50 text-amber-600',
+    };
+    return (
+      <div className="space-y-3">
+        {advTags && (
+          <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2 text-xs text-blue-800 flex items-center gap-2 no-print">
+            <CalcIcon cn="w-4 h-4 shrink-0" />
+            <span><strong>คำนวณรวมตั้งค่าขั้นสูง:</strong> {advTags}</span>
+          </div>
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 print-summary-hero">
+          {cards.map((c, i) => (
+            <div key={i} className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-ink-500">{c.label}</span>
+                <div className={clsx('w-9 h-9 rounded-xl flex items-center justify-center', tones[c.tone])}>
+                  {c.icon}
+                </div>
+              </div>
+              <div className={clsx('text-2xl font-bold text-ink-900', c.valueClass)}>{c.value}</div>
+              <p className="text-xs text-ink-500">{c.hint}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // DETAILED SUMMARY  ⭐ NEW — สรุปผลการคำนวณแบบละเอียด
+  // ==========================================================================
+  function StatBox({ label, value, hint, accent }) {
+    return (
+      <div className="bg-ink-100/60 rounded-xl p-3.5">
+        <p className="text-[11px] text-ink-500 leading-tight uppercase tracking-wide">{label}</p>
+        <p className={clsx('text-lg font-bold mt-1.5 leading-tight', accent || 'text-ink-900')}>
+          {value}
+        </p>
+        {hint && <p className="text-[10px] text-ink-500 mt-1 leading-tight">{hint}</p>}
+      </div>
+    );
+  }
+
+  function SummarySection({ title, subtitle, icon, color, children }) {
+    return (
+      <div className="bg-white rounded-2xl shadow-card p-5">
+        <div className="flex items-center gap-3 mb-4 pb-3 border-b border-ink-100">
+          <div className={clsx('w-10 h-10 rounded-xl flex items-center justify-center', color)}>
+            {icon}
+          </div>
+          <div>
+            <h3 className="text-base font-semibold text-ink-900 leading-tight">{title}</h3>
+            {subtitle && <p className="text-xs text-ink-500">{subtitle}</p>}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">{children}</div>
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // ADVANCED SETTINGS — ⭐ toggleable rate escalation, degradation, net metering
+  // ==========================================================================
+  function AdvancedSettings({ value, onChange }) {
+    const [open, setOpen] = useState(false);
+    const upd = (key, patch) => onChange({ ...value, [key]: { ...value[key], ...patch } });
+
+    function ToggleRow({ label, hint, checked, onToggle, children }) {
+      return (
+        <div className="space-y-1.5">
+          <label className="flex items-center gap-3 cursor-pointer group" onClick={onToggle}>
+            <div className={clsx(
+              'w-9 h-5 rounded-full transition relative shrink-0',
+              checked ? 'bg-brand-500' : 'bg-ink-300'
+            )}>
+              <div className={clsx(
+                'absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform',
+                checked ? 'translate-x-4' : 'translate-x-0.5'
+              )} />
+            </div>
+            <div>
+              <span className="text-sm font-medium text-ink-700 group-hover:text-ink-900">{label}</span>
+              {hint && <p className="text-[11px] text-ink-500">{hint}</p>}
+            </div>
+          </label>
+          {checked && children && <div className="pl-12">{children}</div>}
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-white rounded-2xl shadow-card p-6 space-y-4 no-print">
+        <button onClick={() => setOpen(!open)}
+          className="w-full flex items-center justify-between text-left">
+          <div>
+            <h2 className="text-lg font-semibold text-ink-900 flex items-center gap-2">
+              <CalcIcon cn="w-5 h-5 text-brand-500" /> ตั้งค่าขั้นสูง
+            </h2>
+            <p className="text-sm text-ink-500">
+              ค่าไฟเพิ่มรายปี · แผงเสื่อม · ขายไฟคืน · Dark mode
+            </p>
+          </div>
+          <ChevronIcon cn={clsx('w-5 h-5 text-ink-500 transition-transform', open && 'rotate-180')} />
+        </button>
+
+        {open && (
+          <div className="space-y-4 pt-2">
+            <ToggleRow
+              label="อัตราค่าไฟเพิ่มรายปี"
+              hint="ค่าไฟฟ้าเพิ่มขึ้น ~3-5% ต่อปี ทำให้โซลาร์คุ้มกว่าที่คิด"
+              checked={value.rateEscalation.enabled}
+              onToggle={() => upd('rateEscalation', { enabled: !value.rateEscalation.enabled })}>
+              <div className="flex items-center gap-2">
+                <input type="number" min={0} max={10} step={0.5}
+                  value={value.rateEscalation.rate}
+                  onChange={(e) => upd('rateEscalation', { rate: nv(e.target.value) })}
+                  className="w-20 px-2 py-1.5 rounded-lg border border-ink-300 text-sm text-center" />
+                <span className="text-sm text-ink-500">% ต่อปี</span>
+              </div>
+            </ToggleRow>
+
+            <ToggleRow
+              label="แผงโซลาร์เสื่อมรายปี"
+              hint="แผงผลิตไฟลดลง ~0.5%/ปี → ปีที่ 25 ผลิตได้ ~88%"
+              checked={value.panelDegradation.enabled}
+              onToggle={() => upd('panelDegradation', { enabled: !value.panelDegradation.enabled })}>
+              <div className="flex items-center gap-2">
+                <input type="number" min={0} max={2} step={0.1}
+                  value={value.panelDegradation.rate}
+                  onChange={(e) => upd('panelDegradation', { rate: nv(e.target.value) })}
+                  className="w-20 px-2 py-1.5 rounded-lg border border-ink-300 text-sm text-center" />
+                <span className="text-sm text-ink-500">% ต่อปี</span>
+              </div>
+            </ToggleRow>
+
+            <ToggleRow
+              label="Net Metering (ขายไฟส่วนเกินคืน)"
+              hint="ไฟที่ผลิตเกินขายคืนให้การไฟฟ้า ~2.20 บาท/หน่วย"
+              checked={value.netMetering.enabled}
+              onToggle={() => upd('netMetering', { enabled: !value.netMetering.enabled })}>
+              <div className="flex items-center gap-2">
+                <input type="number" min={0} max={10} step={0.1}
+                  value={value.netMetering.rate}
+                  onChange={(e) => upd('netMetering', { rate: nv(e.target.value) })}
+                  className="w-20 px-2 py-1.5 rounded-lg border border-ink-300 text-sm text-center" />
+                <span className="text-sm text-ink-500">บาท/หน่วย</span>
+              </div>
+            </ToggleRow>
+
+            <div className="border-t border-ink-100 pt-3">
+              <ToggleRow
+                label="🌙 Dark Mode"
+                checked={!!value.darkMode}
+                onToggle={() => onChange({ ...value, darkMode: !value.darkMode })} />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // EXCESS SOLAR DETAIL — months with surplus + annual total ⭐ NEW
+  // ==========================================================================
+  function ExcessSolarDetail({ data, adv }) {
+    const excessMonths = data.filter(m => m.solarExcessKwh > 0);
+    const totalExcess  = data.reduce((s, m) => s + (m.solarExcessKwh || 0), 0);
+    if (totalExcess <= 0) return null;
+    const nmEnabled = !!(adv && adv.netMetering && adv.netMetering.enabled);
+    const nmRate    = nmEnabled ? (Number(adv.netMetering.rate) || 2.20) : 0;
+    const nmIncome  = nmRate * totalExcess;
+    const sortedMax = [...data].sort((a, b) => b.solarExcessKwh - a.solarExcessKwh);
+    const peakMonth = sortedMax[0];
+
+    return (
+      <div className="bg-white rounded-2xl shadow-card p-6 no-print">
+        <h3 className="text-lg font-semibold text-ink-900 mb-1 flex items-center gap-2">
+          <SunIcon cn="w-5 h-5 text-amber-500" />
+          เดือนที่ผลิตไฟเกินใช้งาน (Excess Solar)
+        </h3>
+        <p className="text-sm text-ink-500 mb-4">
+          พลังงานที่โซลาร์ผลิตเกินความต้องการในแต่ละเดือน — {nmEnabled
+            ? `ขายคืนการไฟฟ้าได้ที่ ${formatRate(nmRate)}`
+            : 'ปัจจุบันยังไม่ได้เปิด Net Metering — ส่วนเกินถูกทิ้งเปล่า'}
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
+            <p className="text-[10px] text-amber-700 uppercase tracking-wide">เดือนที่มีไฟเกิน</p>
+            <p className="text-lg font-bold text-amber-700 mt-1">{excessMonths.length} จาก 12 เดือน</p>
+          </div>
+          <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
+            <p className="text-[10px] text-amber-700 uppercase tracking-wide">รวมส่วนเกินต่อปี</p>
+            <p className="text-lg font-bold text-amber-700 mt-1">{formatNumber(totalExcess, 0)} kWh</p>
+          </div>
+          <div className={clsx(
+            'rounded-xl p-3 border',
+            nmEnabled ? 'bg-green-50 border-green-100' : 'bg-ink-100 border-ink-300/40'
+          )}>
+            <p className={clsx('text-[10px] uppercase tracking-wide',
+              nmEnabled ? 'text-green-700' : 'text-ink-500')}>
+              {nmEnabled ? 'รายได้จากการขายคืน/ปี' : 'มูลค่าที่เสียไป (ไม่มี NM)'}
+            </p>
+            <p className={clsx('text-lg font-bold mt-1',
+              nmEnabled ? 'text-green-700' : 'text-ink-700')}>
+              {formatTHB(nmIncome)}
+            </p>
+          </div>
+        </div>
+
+        {peakMonth && peakMonth.solarExcessKwh > 0 && (
+          <p className="text-xs text-ink-500 mb-3">
+            เดือนที่ผลิตเกินมากที่สุด: <strong className="text-amber-700">{peakMonth.monthLabel}</strong>
+            {' '}({formatNumber(peakMonth.solarExcessKwh, 0)} kWh — แดด {peakMonth.pshDay} ชม./วัน)
+          </p>
+        )}
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-ink-200 text-ink-500">
+                <th className="py-2 px-3 text-left font-medium">เดือน</th>
+                <th className="py-2 px-3 text-right font-medium">ผลิต (kWh)</th>
+                <th className="py-2 px-3 text-right font-medium">ใช้ (kWh)</th>
+                <th className="py-2 px-3 text-right font-medium">เกิน (kWh)</th>
+                <th className="py-2 px-3 text-right font-medium">% ของผลิตทั้งหมด</th>
+                {nmEnabled && <th className="py-2 px-3 text-right font-medium">ขายคืน (฿)</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((m, i) => {
+                const pctExcess = m.solarGenKwh > 0 ? (m.solarExcessKwh / m.solarGenKwh) * 100 : 0;
+                const isExcess = m.solarExcessKwh > 0;
+                return (
+                  <tr key={i} className={clsx(
+                    'border-b border-ink-100',
+                    isExcess && 'bg-amber-50/30'
+                  )}>
+                    <td className="py-1.5 px-3 font-medium">{m.monthLabel}</td>
+                    <td className="py-1.5 px-3 text-right">{formatNumber(m.solarGenKwh, 0)}</td>
+                    <td className="py-1.5 px-3 text-right">{formatNumber(m.totalUsageKwh, 0)}</td>
+                    <td className={clsx('py-1.5 px-3 text-right font-semibold',
+                      isExcess ? 'text-amber-700' : 'text-ink-300')}>
+                      {isExcess ? formatNumber(m.solarExcessKwh, 0) : '–'}
+                    </td>
+                    <td className={clsx('py-1.5 px-3 text-right',
+                      isExcess ? 'text-amber-700' : 'text-ink-300')}>
+                      {isExcess ? pctExcess.toFixed(1) + '%' : '–'}
+                    </td>
+                    {nmEnabled && (
+                      <td className={clsx('py-1.5 px-3 text-right',
+                        isExcess ? 'text-green-700 font-medium' : 'text-ink-300')}>
+                        {isExcess ? formatTHB(m.solarExcessKwh * nmRate) : '–'}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+              <tr className="border-t-2 border-ink-300 bg-amber-50 font-semibold">
+                <td className="py-2 px-3">รวมทั้งปี</td>
+                <td className="py-2 px-3 text-right">{formatNumber(data.reduce((s,m)=>s+m.solarGenKwh,0), 0)}</td>
+                <td className="py-2 px-3 text-right">{formatNumber(data.reduce((s,m)=>s+m.totalUsageKwh,0), 0)}</td>
+                <td className="py-2 px-3 text-right text-amber-700">{formatNumber(totalExcess, 0)}</td>
+                <td className="py-2 px-3"></td>
+                {nmEnabled && <td className="py-2 px-3 text-right text-green-700">{formatTHB(nmIncome)}</td>}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {!nmEnabled && totalExcess > 100 && (
+          <div className="mt-4 bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-900 no-print">
+            💡 <strong>คำแนะนำ:</strong> มีไฟเหลือ {formatNumber(totalExcess, 0)} kWh/ปี
+            ที่ปัจจุบันถูกทิ้งเปล่า — เปิด <strong>Net Metering</strong> ในตั้งค่าขั้นสูง
+            เพื่อขายคืนการไฟฟ้า หรือเพิ่ม <strong>แบตเตอรี่</strong> เพื่อใช้ตอนกลางคืน
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // RECOMMENDED SIZE SUMMARY — focused card highlighting the starred option ⭐ NEW
+  // ==========================================================================
+  function RecommendedSizeSummary({ baseResult, baseSystem, tariff, region, pr, equipment, userInput, adv }) {
+    const proj25 = buildYearlyProjection(baseResult, baseSystem.installationCostTHB, adv, 25);
+    const netProfit25 = proj25[25] ? proj25[25].cumulativeNoSolar - proj25[25].cumulativeWithSolar : 0;
+    const netProfit10 = proj25[10] ? proj25[10].cumulativeNoSolar - proj25[10].cumulativeWithSolar : 0;
+    const monthlySavings = baseResult.annualSavingsTHB / 12;
+    const costPerKw = baseSystem.installationCostTHB / Math.max(baseSystem.systemSizeKw, 0.1);
+    const yearsToProfit = baseResult.breakEvenYears;
+
+    return (
+      <div className="bg-gradient-to-br from-brand-50 to-amber-50 border-2 border-brand-200 rounded-2xl shadow-card p-6 no-print">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div>
+            <h3 className="text-lg font-semibold text-ink-900 flex items-center gap-2">
+              <SparkleIcon cn="w-5 h-5 text-brand-500" />
+              สรุปทางเลือกที่แนะนำ ⭐
+            </h3>
+            <p className="text-sm text-ink-500">ขนาด {baseSystem.systemSizeKw} kW — ภาพรวมที่ตอบโจทย์</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[11px] text-ink-500 uppercase tracking-wide">ต้นทุนติดตั้ง</p>
+            <p className="text-2xl font-bold text-brand-700">{formatTHB(baseSystem.installationCostTHB)}</p>
+            <p className="text-[10px] text-ink-500">{formatTHB(costPerKw)} / kW</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-white rounded-xl p-3 border border-brand-100">
+            <p className="text-[10px] text-ink-500 uppercase tracking-wide">ประหยัด/เดือน</p>
+            <p className="text-xl font-bold text-green-600 mt-1">{formatTHB(monthlySavings)}</p>
+            <p className="text-[10px] text-ink-500 mt-0.5">{formatTHB(baseResult.annualSavingsTHB)}/ปี</p>
+          </div>
+          <div className="bg-white rounded-xl p-3 border border-brand-100">
+            <p className="text-[10px] text-ink-500 uppercase tracking-wide">จุดคุ้มทุน</p>
+            <p className="text-xl font-bold text-blue-600 mt-1">{formatYears(yearsToProfit)}</p>
+            <p className="text-[10px] text-ink-500 mt-0.5">หลังจากนั้นเป็นกำไร</p>
+          </div>
+          <div className="bg-white rounded-xl p-3 border border-brand-100">
+            <p className="text-[10px] text-ink-500 uppercase tracking-wide">กำไร 10 ปี</p>
+            <p className={clsx('text-xl font-bold mt-1',
+              netProfit10 >= 0 ? 'text-blue-700' : 'text-red-600')}>
+              {formatTHB(netProfit10)}
+            </p>
+            <p className="text-[10px] text-ink-500 mt-0.5">หลังหักต้นทุน</p>
+          </div>
+          <div className="bg-white rounded-xl p-3 border border-brand-100">
+            <p className="text-[10px] text-ink-500 uppercase tracking-wide">กำไร 25 ปี</p>
+            <p className={clsx('text-xl font-bold mt-1',
+              netProfit25 >= 0 ? 'text-green-700' : 'text-red-600')}>
+              {formatTHB(netProfit25)}
+            </p>
+            <p className="text-[10px] text-ink-500 mt-0.5">อายุการใช้งานแผง</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-3">
+          <div className="bg-white/60 rounded-xl p-2.5 border border-brand-100">
+            <p className="text-[10px] text-ink-500 uppercase tracking-wide">ผลิตไฟ/ปี</p>
+            <p className="text-sm font-semibold text-ink-900 mt-0.5">{formatNumber(baseResult.annualSolarKwh, 0)} kWh</p>
+          </div>
+          <div className="bg-white/60 rounded-xl p-2.5 border border-brand-100">
+            <p className="text-[10px] text-ink-500 uppercase tracking-wide">ทดแทนได้/ปี</p>
+            <p className="text-sm font-semibold text-ink-900 mt-0.5">{formatNumber(baseResult.annualSolarOffsetKwh, 0)} kWh</p>
+          </div>
+          <div className="bg-white/60 rounded-xl p-2.5 border border-brand-100">
+            <p className="text-[10px] text-ink-500 uppercase tracking-wide">ครอบคลุมได้</p>
+            <p className="text-sm font-semibold text-ink-900 mt-0.5">{formatNumber(Math.min(baseResult.coveragePercent, 999), 0)}%</p>
+          </div>
+        </div>
+    </div>
+    );
+  }
+
+  // ==========================================================================
+  // PRINT EXTRA SUMMARY — Condenses hidden charts/tables into tiny print cards
+  // ==========================================================================
+  function PrintExtraSummary({ monthly, result, system, tariff, adv, projection }) {
+    const totalExcess = monthly.reduce((s, m) => s + (m.solarExcessKwh || 0), 0);
+    const nmEnabled = !!(adv && adv.netMetering && adv.netMetering.enabled);
+    const nmRate = nmEnabled ? (Number(adv.netMetering.rate) || 2.20) : 0;
+    const nmIncome = totalExcess * nmRate;
+
+    const onPkRate = tariff.mode === 'flat' ? tariff.flatRate : tariff.onPeakRate;
+    const offPkRate = tariff.mode === 'flat' ? tariff.flatRate : tariff.offPeakRate;
+    const avgRate = (onPkRate + offPkRate) / 2;
+    const totalBillBefore = monthly.reduce((s, m) => s + (m.totalUsageKwh * avgRate), 0);
+    const totalBillAfter = monthly.reduce((s, m) => s + (m.gridUsageKwh * avgRate), 0);
+    const avgBillBefore = totalBillBefore / 12;
+    const avgBillAfter = totalBillAfter / 12;
+
+    const avgGen = result.annualSolarKwh / 12;
+    const avgUsage = result.monthlyKwh;
+
+    // Recalculate 25-year projection (since main projection is only 20)
+    const proj25Data = buildYearlyProjection(result, system.installationCostTHB, adv, 25);
+    const proj25 = proj25Data[25] || { cumulativeNoSolar: 0, cumulativeWithSolar: 0 };
+
+    return (
+      <div className="print-only mt-3 pt-3 border-t-2 border-ink-200 print-keep-together">
+        <h3 className="text-[9pt] font-bold text-ink-900 mb-2 flex items-center gap-1.5">
+          <TrendIcon cn="w-4 h-4 text-brand-500" /> สรุปข้อมูลเชิงลึก (จากกราฟและตาราง)
+        </h3>
+        <div className="grid grid-cols-2 gap-3">
+          
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-2.5">
+            <p className="text-[6.5pt] text-blue-800 uppercase tracking-wide font-bold mb-1.5 border-b border-blue-200 pb-1">ค่าไฟรายเดือนเฉลี่ย</p>
+            <div className="flex justify-between items-baseline mb-1">
+              <span className="text-[7pt] text-ink-700">ก่อนติดโซลาร์</span>
+              <span className="text-[9pt] font-bold text-red-600">{formatTHB(avgBillBefore)}</span>
+            </div>
+            <div className="flex justify-between items-baseline">
+              <span className="text-[7pt] text-ink-700">หลังติดโซลาร์</span>
+              <span className="text-[9pt] font-bold text-green-700">{formatTHB(avgBillAfter)}</span>
+            </div>
+          </div>
+
+          <div className="bg-brand-50 border border-brand-200 rounded-lg p-2.5">
+            <p className="text-[6.5pt] text-brand-800 uppercase tracking-wide font-bold mb-1.5 border-b border-brand-200 pb-1">พลังงานรายเดือนเฉลี่ย</p>
+            <div className="flex justify-between items-baseline mb-1">
+              <span className="text-[7pt] text-ink-700">โซลาร์ผลิตได้</span>
+              <span className="text-[9pt] font-bold text-brand-700">{formatNumber(avgGen, 0)} <span className="text-[6pt] font-normal">kWh</span></span>
+            </div>
+            <div className="flex justify-between items-baseline">
+              <span className="text-[7pt] text-ink-700">ปริมาณการใช้จริง</span>
+              <span className="text-[9pt] font-bold text-ink-800">{formatNumber(avgUsage, 0)} <span className="text-[6pt] font-normal">kWh</span></span>
+            </div>
+          </div>
+
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+            <p className="text-[6.5pt] text-amber-800 uppercase tracking-wide font-bold mb-1.5 border-b border-amber-200 pb-1">ไฟส่วนเกิน (Net Metering)</p>
+            <div className="flex justify-between items-baseline mb-1">
+              <span className="text-[7pt] text-ink-700">ส่วนเกินรวมต่อปี</span>
+              <span className="text-[9pt] font-bold text-amber-700">{formatNumber(totalExcess, 0)} <span className="text-[6pt] font-normal">kWh</span></span>
+            </div>
+            <div className="flex justify-between items-baseline">
+              <span className="text-[7pt] text-ink-700">ขายคืนได้</span>
+              <span className="text-[9pt] font-bold text-green-700">{nmEnabled ? formatTHB(nmIncome) : 'ไม่ได้เปิดใช้งาน'}</span>
+            </div>
+          </div>
+
+          <div className="bg-ink-50 border border-ink-200 rounded-lg p-2.5">
+            <p className="text-[6.5pt] text-ink-800 uppercase tracking-wide font-bold mb-1.5 border-b border-ink-200 pb-1">เปรียบเทียบระยะยาว (25 ปี)</p>
+            <div className="flex justify-between items-baseline mb-1">
+              <span className="text-[7pt] text-ink-700">จ่ายค่าไฟ (ไม่มีโซลาร์)</span>
+              <span className="text-[9pt] font-bold text-red-600">{formatTHB(proj25.cumulativeNoSolar)}</span>
+            </div>
+            <div className="flex justify-between items-baseline">
+              <span className="text-[7pt] text-ink-700">จ่ายค่าไฟ (มีโซลาร์)</span>
+              <span className="text-[9pt] font-bold text-green-700">{formatTHB(proj25.cumulativeWithSolar)}</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // SYSTEM SIZE COMPARISON TABLE
+  // ==========================================================================
+  function SystemComparison({ baseResult, baseSystem, tariff, region, pr, equipment, userInput, adv }) {
+    const baseSz = baseSystem.systemSizeKw;
+    const sizes = [
+      Math.max(1, Math.round((baseSz * 0.6) * 2) / 2),
+      baseSz,
+      Math.round((baseSz * 1.4) * 2) / 2,
+    ].filter((v, i, a) => a.indexOf(v) === i); // dedupe
+
+    const rows = sizes.map(sz => {
+      const sys = { ...baseSystem, systemSizeKw: sz, installationCostTHB: Math.round(sz * (baseSystem.installationCostTHB / baseSz)) };
+      const r = calculate(userInput, sys, tariff, region, pr, equipment, adv);
+      const proj = buildYearlyProjection(r, sys.installationCostTHB, adv, 25);
+      const netProfit25 = (proj[25] ? proj[25].cumulativeNoSolar - proj[25].cumulativeWithSolar : 0);
+      return { sz, cost: sys.installationCostTHB, r, netProfit25 };
+    });
+
+    return (
+      <div className="bg-white rounded-2xl shadow-card p-6 no-print">
+        <h3 className="text-lg font-semibold text-ink-900 mb-1 flex items-center gap-2">
+          <GridIcon cn="w-5 h-5 text-brand-500" /> เปรียบเทียบขนาดระบบ
+        </h3>
+        <p className="text-sm text-ink-500 mb-4">เทียบ ROI ระหว่างขนาดต่างๆ</p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-ink-200">
+                <th className="py-2 px-3 text-left text-ink-500 font-medium">รายการ</th>
+                {rows.map(({ sz }) => (
+                  <th key={sz} className={clsx(
+                    'py-2 px-3 text-right font-semibold',
+                    sz === baseSz ? 'text-brand-600 bg-brand-50/50 rounded-t-lg' : 'text-ink-700'
+                  )}>
+                    {sz} kW {sz === baseSz && '⭐'}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="text-ink-700">
+              <tr className="border-b border-ink-100">
+                <td className="py-2 px-3">ต้นทุนติดตั้ง</td>
+                {rows.map(({ sz, cost }) => (
+                  <td key={sz} className={clsx('py-2 px-3 text-right', sz === baseSz && 'bg-brand-50/50')}>
+                    {formatTHB(cost)}
+                  </td>
+                ))}
+              </tr>
+              <tr className="border-b border-ink-100">
+                <td className="py-2 px-3">ประหยัด/เดือน</td>
+                {rows.map(({ sz, r }) => (
+                  <td key={sz} className={clsx('py-2 px-3 text-right text-green-600 font-medium', sz === baseSz && 'bg-brand-50/50')}>
+                    {formatTHB(r.annualSavingsTHB / 12)}
+                  </td>
+                ))}
+              </tr>
+              <tr className="border-b border-ink-100">
+                <td className="py-2 px-3">จุดคุ้มทุน</td>
+                {rows.map(({ sz, r }) => (
+                  <td key={sz} className={clsx('py-2 px-3 text-right font-medium', sz === baseSz && 'bg-brand-50/50')}>
+                    {formatYears(r.breakEvenYears)}
+                  </td>
+                ))}
+              </tr>
+              <tr className="border-b border-ink-100">
+                <td className="py-2 px-3">กำไร 25 ปี</td>
+                {rows.map(({ sz, netProfit25 }) => (
+                  <td key={sz} className={clsx('py-2 px-3 text-right font-semibold', sz === baseSz && 'bg-brand-50/50',
+                    netProfit25 > 0 ? 'text-green-600' : 'text-red-600')}>
+                    {formatTHB(netProfit25)}
+                  </td>
+                ))}
+              </tr>
+              <tr>
+                <td className="py-2 px-3">Solar ส่วนเกิน/ปี</td>
+                {rows.map(({ sz, r }) => (
+                  <td key={sz} className={clsx('py-2 px-3 text-right', sz === baseSz && 'bg-brand-50/50')}>
+                    {formatNumber(r.annualSolarExcessKwh, 0)} kWh
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // SHARE BUTTON — encode state to URL
+  // ==========================================================================
+  function ShareButton({ getExportData }) {
+    const [copied, setCopied] = useState(false);
+    const share = () => {
+      try {
+        const data = getExportData();
+        const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+        const url = window.location.href.split('#')[0] + '#data=' + encoded;
+        navigator.clipboard.writeText(url).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2500);
+        });
+      } catch (e) { alert('ไม่สามารถสร้างลิงก์ได้: ' + e.message); }
+    };
+    return (
+      <button onClick={share}
+        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 text-sm font-medium transition no-print">
+        {copied ? '✅ คัดลอกแล้ว!' : <><CopyIcon cn="w-4 h-4" /> แชร์ลิงก์</>}
+      </button>
+    );
+  }
+
+  function DetailedSummary({ result, system, tariff, adv }) {
+    // Year-1 savings (already includes net metering — added inside calculate())
+    const effectiveAnnualSavings = result.annualSavingsTHB;
+    const monthlySavings         = effectiveAnnualSavings / 12;
+    // Net metering revenue (already counted inside annualSavingsTHB; exposed for display)
+    const nmRevenueYear          = result.annualNetMeteringTHB || 0;
+    // Break-even (already adv-adjusted by calculate())
+    const effectiveBreakEven     = result.breakEvenYears;
+
+    // Use projection to get accurate 10/25 year totals (with escalation + degradation)
+    const proj25 = buildYearlyProjection(result, system.installationCostTHB, adv, 25);
+    const cumNoSolar10  = proj25[10] ? proj25[10].cumulativeNoSolar  : result.annualBillNoSolarTHB * 10;
+    const cumWithSolar10= proj25[10] ? proj25[10].cumulativeWithSolar: 0;
+    const cumNoSolar25  = proj25[25] ? proj25[25].cumulativeNoSolar  : result.annualBillNoSolarTHB * 25;
+    const cumWithSolar25= proj25[25] ? proj25[25].cumulativeWithSolar: 0;
+    const totalSavings10Y = cumNoSolar10 - cumWithSolar10;
+    const totalSavings25Y = cumNoSolar25 - cumWithSolar25;
+    const netProfit10Y    = totalSavings10Y;  // cumWithSolar already includes install cost
+    const netProfit25Y    = totalSavings25Y;
+
+    const roiPercent       = system.installationCostTHB > 0
+      ? (effectiveAnnualSavings / system.installationCostTHB) * 100 : 0;
+    const annualGenKwh     = result.annualSolarKwh;
+    const annualOffsetKwh  = result.annualSolarOffsetKwh;
+    const annualNeedKwh    = result.monthlyKwh * 12;
+    const annualGridKwh    = Math.max(annualNeedKwh - annualOffsetKwh, 0);
+    // Thailand grid emission factor ~0.5 kg CO2/kWh
+    const co2PerYear       = annualOffsetKwh * 0.5;
+    const co2Total25Y      = co2PerYear * 25;
+    const treesEquivalent  = co2PerYear / 21;   // tree absorbs ~21 kg CO2/yr
+
+    // Hint for advanced settings effect
+    const hasAdv = adv && (
+      (adv.rateEscalation && adv.rateEscalation.enabled) ||
+      (adv.panelDegradation && adv.panelDegradation.enabled) ||
+      (adv.netMetering && adv.netMetering.enabled)
+    );
+    const advHint = hasAdv ? ' (รวมตั้งค่าขั้นสูง)' : '';
+
+    return (
+      <div className="space-y-5">
+        <div className="flex items-baseline justify-between flex-wrap gap-2">
+          <h2 className="text-xl font-semibold text-ink-900">สรุปผลการคำนวณ</h2>
+          <p className="text-xs text-ink-500">
+            ระบบ {system.systemSizeKw.toFixed(1)} kW · ต้นทุน {formatTHB(system.installationCostTHB)}
+            {hasAdv && <span className="text-brand-600 font-medium"> · ⚙ ตั้งค่าขั้นสูง ON</span>}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 print-detail-grid">
+
+          {/* ค่าไฟที่ประหยัด */}
+          <SummarySection
+            title="การประหยัดค่าไฟ"
+            subtitle="เงินที่ประหยัดได้จากการติดโซลาร์"
+            icon={<PiggyIcon cn="w-5 h-5" />}
+            color="bg-green-50 text-green-600">
+            <StatBox
+              label="ค่าไฟต่อเดือน (ก่อนโซลาร์)"
+              value={formatTHB(result.monthlyBillTHB)}
+              hint={formatNumber(result.monthlyKwh, 0) + ' kWh/เดือน'}
+              accent="text-ink-900" />
+            <StatBox
+              label="ค่าไฟต่อเดือน (หลังโซลาร์)"
+              value={result.monthlyBillTHB - monthlySavings >= 0
+                ? formatTHB(result.monthlyBillTHB - monthlySavings)
+                : 'ได้รับคืน ' + formatTHB(monthlySavings - result.monthlyBillTHB)}
+              hint={'ส่วนต่าง ' + formatTHB(monthlySavings) + '/เดือน'}
+              accent={result.monthlyBillTHB - monthlySavings >= 0 ? 'text-blue-600' : 'text-green-600'} />
+            <StatBox
+              label={'ประหยัดต่อเดือน' + (nmRevenueYear > 0 ? ' + ขายไฟ' : '')}
+              value={formatTHB(monthlySavings)}
+              hint={nmRevenueYear > 0 ? 'รวมรายได้ขายไฟ ' + formatTHB(nmRevenueYear/12) + '/เดือน' : undefined}
+              accent="text-green-600" />
+            <StatBox
+              label={'ประหยัดต่อปี' + (nmRevenueYear > 0 ? ' + ขายไฟ' : '')}
+              value={formatTHB(effectiveAnnualSavings)}
+              accent="text-green-600" />
+            <StatBox
+              label={'ประหยัดรวม 10 ปี' + advHint}
+              value={formatTHB(totalSavings10Y)}
+              accent="text-green-700" />
+            <StatBox
+              label={'ประหยัดรวม 25 ปี' + advHint}
+              value={formatTHB(totalSavings25Y)}
+              hint="ตามอายุการใช้งานแผงทั่วไป"
+              accent="text-green-700" />
+          </SummarySection>
+
+          {/* ผลตอบแทนการลงทุน */}
+          <SummarySection
+            title="ผลตอบแทนการลงทุน (ROI)"
+            subtitle="คุ้มทุนเมื่อไหร่ และได้กำไรเท่าไร"
+            icon={<TrendIcon cn="w-5 h-5" />}
+            color="bg-blue-50 text-blue-600">
+            <StatBox
+              label={'จุดคุ้มทุน' + advHint}
+              value={formatYears(effectiveBreakEven)}
+              accent="text-blue-600" />
+            <StatBox
+              label="ROI ต่อปี"
+              value={isFinite(roiPercent) ? formatNumber(roiPercent, 1) + '%' : '-'}
+              hint="ผลตอบแทนต่อต้นทุน"
+              accent="text-blue-600" />
+            <StatBox
+              label={'กำไรสุทธิ 10 ปี' + advHint}
+              value={formatTHB(netProfit10Y)}
+              hint="หลังหักต้นทุนติดตั้งแล้ว"
+              accent={netProfit10Y >= 0 ? 'text-blue-700' : 'text-red-600'} />
+            <StatBox
+              label={'กำไรสุทธิ 25 ปี' + advHint}
+              value={formatTHB(netProfit25Y)}
+              hint="หลังหักต้นทุนติดตั้งแล้ว"
+              accent={netProfit25Y >= 0 ? 'text-blue-700' : 'text-red-600'} />
+          </SummarySection>
+
+          {/* ระบบและการผลิตไฟฟ้า */}
+          <SummarySection
+            title="ระบบและการผลิตไฟฟ้า"
+            subtitle="ขนาดระบบและพลังงานที่ผลิตได้"
+            icon={<ZapIcon cn="w-5 h-5" />}
+            color="bg-amber-50 text-amber-600">
+            <StatBox
+              label="ขนาดระบบที่เลือก"
+              value={system.systemSizeKw.toFixed(1) + ' kW'}
+              accent="text-amber-700" />
+            <StatBox
+              label="ขนาดที่แนะนำ"
+              value={result.recommendedSizeKw.toFixed(1) + ' kW'}
+              hint="คลุม 80–100% ของกลางวัน"
+              accent="text-amber-700" />
+            <StatBox
+              label="ผลิตไฟได้ต่อเดือน"
+              value={formatNumber(result.monthlySolarKwh) + ' kWh'} />
+            <StatBox
+              label="ผลิตไฟได้ต่อปี"
+              value={formatNumber(annualGenKwh) + ' kWh'} />
+            <StatBox
+              label="ทดแทนได้จริง/เดือน"
+              value={formatNumber(result.monthlySolarOffsetKwh) + ' kWh'}
+              hint="ส่วนที่ใช้ในบ้านได้"
+              accent="text-amber-700" />
+            <StatBox
+              label="ครอบคลุมที่ทดแทนได้"
+              value={formatNumber(Math.min(result.coveragePercent, 999), 0) + '%'}
+              accent={
+                result.coveragePercent >= 80 && result.coveragePercent <= 110
+                  ? 'text-green-600'
+                  : 'text-amber-600'
+              } />
+          </SummarySection>
+
+          {/* ผลกระทบสิ่งแวดล้อม */}
+          <SummarySection
+            title="ผลกระทบสิ่งแวดล้อม"
+            subtitle="ช่วยลดมลภาวะได้แค่ไหน"
+            icon={<LeafIcon cn="w-5 h-5" />}
+            color="bg-teal-50 text-teal-600">
+            <StatBox
+              label="ลด CO₂ ต่อปี"
+              value={formatNumber(co2PerYear) + ' kg'}
+              accent="text-teal-700" />
+            <StatBox
+              label="ลด CO₂ รวม 25 ปี"
+              value={formatNumber(co2Total25Y / 1000, 1) + ' ตัน'}
+              accent="text-teal-700" />
+            <StatBox
+              label="เทียบเท่าปลูกต้นไม้"
+              value={formatNumber(treesEquivalent, 0) + ' ต้น/ปี'}
+              hint="1 ต้นดูดซับ ~21 kg CO₂/ปี" />
+            <StatBox
+              label="ดึงจากการไฟฟ้า/ปี"
+              value={formatNumber(annualGridKwh) + ' kWh'}
+              hint="หน่วยที่ยังต้องซื้อ" />
+          </SummarySection>
+
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // CHARTS
+  // ==========================================================================
+  function findCrossover(data) {
+    for (const row of data) {
+      if (row.year > 0 && row.cumulativeWithSolar <= row.cumulativeNoSolar) return row;
+    }
+    return null;
+  }
+
+  function ComparisonChart({ data }) {
+    const crossover = findCrossover(data);
+    return (
+      <div className="w-full h-[320px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <XAxis dataKey="year" tick={{ fontSize: 12, fill: '#64748b' }}
+              label={{ value: 'ปี', position: 'insideBottomRight', offset: -5, fill: '#64748b', fontSize: 12 }} />
+            <YAxis tick={{ fontSize: 12, fill: '#64748b' }}
+              tickFormatter={(v) => (v / 1000).toFixed(0) + 'k'} width={60} />
+            <Tooltip formatter={(v) => formatTHB(v)}
+              labelFormatter={(label) => 'ปีที่ ' + label}
+              contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 13 }} />
+            <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} iconType="circle" />
+            <Line type="monotone" dataKey="cumulativeNoSolar" name="ไม่ติดโซลาร์"
+              stroke="#ef4444" strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+            <Line type="monotone" dataKey="cumulativeWithSolar" name="ติดโซลาร์ (รวมต้นทุน)"
+              stroke="#f59e0b" strokeWidth={2.5} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+            {crossover && (
+              <ReferenceDot x={crossover.year} y={crossover.cumulativeWithSolar}
+                r={7} fill="#10b981" stroke="white" strokeWidth={2}
+                label={{ value: 'จุดคุ้มทุน ปีที่ ' + crossover.year, position: 'top',
+                         fill: '#10b981', fontSize: 11, fontWeight: 600 }} />
+            )}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  }
+
+  function EnergyBreakdownChart({ data, hasBattery }) {
+    return (
+      <div className="w-full h-[320px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <XAxis dataKey="monthLabel" tick={{ fontSize: 11, fill: '#64748b' }} />
+            <YAxis tick={{ fontSize: 12, fill: '#64748b' }} width={50}
+              label={{ value: 'kWh', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 12 }} />
+            <Tooltip formatter={(v) => formatNumber(v, 0) + ' kWh'}
+              contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 13 }} />
+            <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} iconType="circle" />
+            {/* Demand stack: solar offset + battery offset + grid */}
+            <Bar dataKey="solarOffsetKwh"   name="ทดแทนด้วยโซลาร์" stackId="demand" fill="#f59e0b" />
+            {hasBattery && (
+              <Bar dataKey="batteryOffsetKwh" name="ทดแทนด้วยแบตเตอรี่" stackId="demand" fill="#10b981" />
+            )}
+            <Bar dataKey="gridUsageKwh"     name="ดึงจากการไฟฟ้า"  stackId="demand" fill="#94a3b8" radius={[6, 6, 0, 0]} />
+            {/* Excess solar (overflow above demand) — separate visual */}
+            <Bar dataKey="solarExcessKwh"   name="โซลาร์ส่วนเกิน (ทิ้ง)" stackId="excess" fill="#fde68a" radius={[6, 6, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // EQUIPMENT SECTION  ⭐ NEW — กรอกอุปกรณ์เพื่อปรับการคำนวณให้แม่นยำขึ้น
+  // ==========================================================================
+  function EquipmentSection({ value, onChange, system, onSystemChange, pr, onPrChange, autoSyncSize, onAutoSyncChange }) {
+    const [open, setOpen] = useState(true);
+    const setPanels   = (p) => onChange({ ...value, panels:   { ...value.panels,   ...p } });
+    const setInverter = (p) => onChange({ ...value, inverter: { ...value.inverter, ...p } });
+    const setBattery  = (p) => onChange({ ...value, battery:  { ...value.battery,  ...p } });
+    const setMount    = (p) => onChange({ ...value, mounting: { ...value.mounting, ...p } });
+
+    const pKw    = panelTotalKw(value);
+    const ratio  = dcAcRatio(value);
+    const effKw  = effectiveSystemKw(value);
+    const adjPR  = adjustedPR(value);
+
+    let warning = null;
+    if (ratio > 1.3)      warning = 'อินเวอร์เตอร์เล็กเกินไป — กำลังจะถูกตัด (clipping) ในช่วงพีค';
+    else if (ratio < 0.95) warning = 'แผงน้อยเกินไป — อินเวอร์เตอร์ใหญ่เกินจำเป็น';
+
+    return (
+      <div className="bg-white rounded-2xl shadow-card p-6 space-y-5">
+        <button onClick={() => setOpen(!open)}
+          className="w-full flex items-center justify-between gap-2 text-left">
+          <div>
+            <h2 className="text-lg font-semibold text-ink-900 flex items-center gap-2">
+              <BoxIcon cn="w-5 h-5 text-brand-500" />
+              อุปกรณ์ติดตั้ง (ทางเลือก)
+            </h2>
+            <p className="text-sm text-ink-500">
+              {value.panels.count} แผง × {value.panels.watts}W = {pKw.toFixed(2)} kW · อินเวอร์เตอร์ {value.inverter.capacityKw} kW
+              {value.battery.enabled && ` · แบตฯ ${value.battery.capacityKwh} kWh`}
+            </p>
+          </div>
+          <ChevronIcon cn={clsx('w-5 h-5 text-ink-500 transition-transform', open && 'rotate-180')} />
+        </button>
+
+        {open && <>
+
+        {/* Panels */}
+        <div>
+          <h3 className="text-sm font-semibold text-ink-700 mb-2 flex items-center gap-2">
+            <GridIcon cn="w-4 h-4 text-brand-500" />
+            แผงโซลาร์เซลล์
+          </h3>
+          <div className="grid grid-cols-3 gap-3">
+            <label className="block">
+              <span className="text-[11px] text-ink-500">วัตต์/แผง</span>
+              <input type="number" min={100} max={800} step={5}
+                value={value.panels.watts}
+                onChange={(e) => setPanels({ watts: nv(e.target.value) })}
+                className="w-full mt-1 px-3 py-2 rounded-lg border border-ink-300 text-sm" />
+            </label>
+            <label className="block">
+              <span className="text-[11px] text-ink-500">จำนวนแผง</span>
+              <input type="number" min={1} max={200} step={1}
+                value={value.panels.count}
+                onChange={(e) => setPanels({ count: nv(e.target.value) })}
+                className="w-full mt-1 px-3 py-2 rounded-lg border border-ink-300 text-sm" />
+            </label>
+            <div>
+              <span className="text-[11px] text-ink-500">รวมกำลังติดตั้ง</span>
+              <p className="mt-1 px-3 py-2 rounded-lg bg-brand-50 text-brand-700 text-sm font-semibold">
+                {pKw.toFixed(2)} kW
+              </p>
+            </div>
+          </div>
+          <input type="text" placeholder="ยี่ห้อ/รุ่น (เช่น Jinko Tiger Neo 580W)"
+            value={value.panels.brand}
+            onChange={(e) => setPanels({ brand: e.target.value })}
+            className="w-full mt-2 px-3 py-2 rounded-lg border border-ink-300 text-sm" />
+        </div>
+
+        {/* Inverter */}
+        <div>
+          <h3 className="text-sm font-semibold text-ink-700 mb-2 flex items-center gap-2">
+            <ZapIcon cn="w-4 h-4 text-brand-500" />
+            อินเวอร์เตอร์
+          </h3>
+          <div className="grid grid-cols-3 gap-3">
+            <label className="block">
+              <span className="text-[11px] text-ink-500">ขนาด (kW)</span>
+              <input type="number" min={0.5} max={50} step={0.5}
+                value={value.inverter.capacityKw}
+                onChange={(e) => setInverter({ capacityKw: nv(e.target.value) })}
+                className="w-full mt-1 px-3 py-2 rounded-lg border border-ink-300 text-sm" />
+            </label>
+            <label className="block">
+              <span className="text-[11px] text-ink-500">ประสิทธิภาพ (%)</span>
+              <input type="number" min={80} max={99} step={0.1}
+                value={value.inverter.efficiency}
+                onChange={(e) => setInverter({ efficiency: nv(e.target.value) })}
+                className="w-full mt-1 px-3 py-2 rounded-lg border border-ink-300 text-sm" />
+            </label>
+            <label className="block">
+              <span className="text-[11px] text-ink-500">ประเภท</span>
+              <select value={value.inverter.type}
+                onChange={(e) => setInverter({ type: e.target.value })}
+                className="w-full mt-1 px-2 py-2 rounded-lg border border-ink-300 text-sm bg-white">
+                <option value="string">String</option>
+                <option value="micro">Micro</option>
+                <option value="hybrid">Hybrid</option>
+              </select>
+            </label>
+          </div>
+          <input type="text" placeholder="ยี่ห้อ/รุ่น (เช่น Huawei SUN2000-5KTL)"
+            value={value.inverter.brand}
+            onChange={(e) => setInverter({ brand: e.target.value })}
+            className="w-full mt-2 px-3 py-2 rounded-lg border border-ink-300 text-sm" />
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <div className="bg-ink-100/60 rounded-lg p-2 text-center">
+              <p className="text-[10px] text-ink-500 uppercase">DC/AC Ratio</p>
+              <p className={clsx(
+                'text-sm font-semibold mt-0.5',
+                ratio >= 1.0 && ratio <= 1.25 ? 'text-green-600' : 'text-amber-600'
+              )}>{ratio.toFixed(2)}</p>
+            </div>
+            <div className="bg-ink-100/60 rounded-lg p-2 text-center">
+              <p className="text-[10px] text-ink-500 uppercase">ใช้งานจริงสูงสุด</p>
+              <p className="text-sm font-semibold mt-0.5">{effKw.toFixed(2)} kW</p>
+            </div>
+          </div>
+          {warning && (
+            <p className="text-[11px] text-amber-700 mt-2 bg-amber-50 border border-amber-200 px-2 py-1.5 rounded-lg">
+              ⚠ {warning}
+            </p>
+          )}
+        </div>
+
+        {/* Battery */}
+        <div>
+          <label className="flex items-center gap-2 text-sm font-semibold text-ink-700 mb-3 cursor-pointer">
+            <input type="checkbox"
+              checked={value.battery.enabled}
+              onChange={(e) => setBattery({ enabled: e.target.checked })}
+              className="w-4 h-4 rounded text-brand-500 accent-brand-500" />
+            <BatteryIcon cn="w-4 h-4 text-brand-500" />
+            มีแบตเตอรี่กักเก็บพลังงาน
+          </label>
+          {value.battery.enabled && (
+            <>
+              <div className="grid grid-cols-2 gap-3 pl-6">
+                <label className="block">
+                  <span className="text-[11px] text-ink-500">ความจุ (kWh)</span>
+                  <input type="number" min={1} max={100} step={0.5}
+                    value={value.battery.capacityKwh}
+                    onChange={(e) => setBattery({ capacityKwh: nv(e.target.value) })}
+                    className="w-full mt-1 px-3 py-2 rounded-lg border border-ink-300 text-sm" />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] text-ink-500">Round-trip Efficiency (%)</span>
+                  <input type="number" min={70} max={98} step={1}
+                    value={value.battery.efficiency}
+                    onChange={(e) => setBattery({ efficiency: nv(e.target.value) })}
+                    className="w-full mt-1 px-3 py-2 rounded-lg border border-ink-300 text-sm" />
+                </label>
+              </div>
+              <p className="text-[11px] text-blue-700 mt-2 pl-6 bg-blue-50 border border-blue-100 px-2 py-1.5 rounded-lg ml-6 mr-0">
+                แบตเตอรี่จะเก็บไฟส่วนเกินกลางวันมาใช้กลางคืน — เพิ่มการประหยัดในอัตรา Off-peak
+              </p>
+            </>
+          )}
+        </div>
+
+        {/* Mounting */}
+        <div>
+          <h3 className="text-sm font-semibold text-ink-700 mb-2 flex items-center gap-2">
+            <CompassIcon cn="w-4 h-4 text-brand-500" />
+            การติดตั้ง
+          </h3>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-[11px] text-ink-500">มุมเอียง (องศา)</span>
+              <input type="number" min={0} max={45} step={1}
+                value={value.mounting.tilt}
+                onChange={(e) => setMount({ tilt: nv(e.target.value) })}
+                className="w-full mt-1 px-3 py-2 rounded-lg border border-ink-300 text-sm" />
+              <span className="text-[10px] text-ink-500">ค่าเหมาะสมสำหรับไทย ~13–18°</span>
+            </label>
+            <label className="block">
+              <span className="text-[11px] text-ink-500">ทิศที่หันหา</span>
+              <select value={value.mounting.azimuth}
+                onChange={(e) => setMount({ azimuth: e.target.value })}
+                className="w-full mt-1 px-2 py-2 rounded-lg border border-ink-300 text-sm bg-white">
+                <option value="south">ทิศใต้ (ดีที่สุด)</option>
+                <option value="east">ทิศตะวันออก</option>
+                <option value="west">ทิศตะวันตก</option>
+                <option value="north">ทิศเหนือ (แย่สุด)</option>
+              </select>
+              <span className="text-[10px] text-ink-500">
+                {value.mounting.azimuth === 'south'  && '100% ของศักยภาพ'}
+                {value.mounting.azimuth === 'east'   && '~93% ของศักยภาพ'}
+                {value.mounting.azimuth === 'west'   && '~93% ของศักยภาพ'}
+                {value.mounting.azimuth === 'north'  && '~78% ของศักยภาพ'}
+              </span>
+            </label>
+          </div>
+        </div>
+
+        {/* Computed summary */}
+        <div className="bg-brand-50 border border-brand-100 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-semibold text-brand-700">ค่าที่คำนวณได้จากอุปกรณ์</p>
+            <label className="flex items-center gap-1.5 text-[11px] text-brand-700 cursor-pointer">
+              <input type="checkbox" checked={autoSyncSize}
+                onChange={(e) => onAutoSyncChange(e.target.checked)}
+                className="w-3.5 h-3.5 rounded accent-brand-500" />
+              ซิงค์ขนาดระบบอัตโนมัติ
+            </label>
+          </div>
+          {!autoSyncSize && (
+            <div className="mb-3">
+              <label className="text-[11px] text-ink-500">ขนาดระบบ (kW) — กำหนดเอง</label>
+              <input type="number" min={0.5} max={100} step={0.5}
+                value={system.systemSizeKw}
+                onChange={(e) => onSystemChange({ ...system, systemSizeKw: nv(e.target.value) })}
+                className="w-full mt-1 px-3 py-2 rounded-lg border border-brand-300 text-sm font-semibold text-brand-700 bg-white" />
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-white rounded-lg p-3">
+              <p className="text-[10px] text-ink-500 uppercase">ขนาดระบบ (Effective)</p>
+              <p className="text-lg font-bold text-brand-700 mt-0.5">{effKw.toFixed(2)} kW</p>
+              <p className="text-[10px] text-ink-500 mt-0.5">
+                {autoSyncSize ? '⚡ ซิงค์อัตโนมัติ' : '✏️ กำหนดเอง: ' + system.systemSizeKw + ' kW'}
+              </p>
+            </div>
+            <div className="bg-white rounded-lg p-3">
+              <p className="text-[10px] text-ink-500 uppercase">PR ที่ตั้งไว้</p>
+              <p className="text-lg font-bold text-brand-700 mt-0.5">{Math.round(pr * 100)}%</p>
+              <p className="text-[10px] text-ink-500 mt-0.5">
+                {Math.abs(adjPR - pr) < 0.005
+                  ? '✓ ตรงกับค่าแนะนำ'
+                  : `แนะนำ ${Math.round(adjPR * 100)}%`}
+              </p>
+            </div>
+          </div>
+          {Math.abs(adjPR - pr) >= 0.005 && (
+            <button
+              type="button"
+              onClick={() => onPrChange(Math.max(0.6, Math.min(0.9, adjPR)))}
+              className="mt-3 w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium transition shadow-sm">
+              <SparkleIcon /> ใช้ค่า PR ที่แนะนำ ({Math.round(adjPR * 100)}%)
+            </button>
+          )}
+        </div>
+
+        {/* Installation cost */}
+        <div>
+          <label className="flex items-center gap-2 text-sm font-medium text-ink-700 mb-3">
+            <WalletIcon cn="w-4 h-4 text-brand-500" />
+            ต้นทุนการติดตั้ง (บาท)
+          </label>
+          <div className="relative">
+            <input type="number" min={0} step={1000}
+              value={system.installationCostTHB}
+              onChange={(e) => onSystemChange({ ...system, installationCostTHB: nv(e.target.value) })}
+              className="w-full px-4 py-3 pr-16 rounded-xl border border-ink-300 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none text-lg font-medium" />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-500 text-sm">บาท</span>
+          </div>
+          <p className="text-xs text-ink-500 mt-2">
+            ต้นทุนเฉลี่ยในตลาด: ~30,000–40,000 บาท/kW (รวมแผง, อินเวอร์เตอร์, ติดตั้ง)
+            <br />ปัจจุบัน <strong>{formatTHB(system.installationCostTHB / Math.max(effKw, 0.01))} / kW</strong>
+          </p>
+        </div>
+
+        </>}
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // EXPORT BUTTONS  ⭐ NEW
+  // ==========================================================================
+  function ExportButtons({ getExportData }) {
+    const handlePrint = () => window.print();
+
+    const handleJSONDownload = () => {
+      const data = getExportData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const date = new Date().toISOString().slice(0, 10);
+      a.download = `solar-roi-${date}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    };
+
+    const handleReset = () => {
+      if (confirm('ล้างข้อมูลที่กรอกไว้ทั้งหมดและเริ่มใหม่?')) {
+        try { localStorage.removeItem(STORAGE_KEY); } catch {}
+        location.reload();
+      }
+    };
+
+    return (
+      <div className="flex gap-2 no-print flex-wrap justify-end">
+        <button onClick={handlePrint}
+          title="พิมพ์หรือบันทึกเป็น PDF"
+          className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white text-xs sm:text-sm font-medium transition border border-white/30">
+          <PrinterIcon cn="w-4 h-4" /> <span className="hidden sm:inline">พิมพ์ / PDF</span>
+        </button>
+        <button onClick={handleJSONDownload}
+          title="ดาวน์โหลดข้อมูลทั้งหมดเป็น JSON"
+          className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white text-xs sm:text-sm font-medium transition border border-white/30">
+          <DownloadIcon cn="w-4 h-4" /> <span className="hidden sm:inline">JSON</span>
+        </button>
+        <button onClick={handleReset}
+          title="ล้างข้อมูลและเริ่มใหม่"
+          className="inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white/90 text-xs sm:text-sm font-medium transition border border-white/20">
+          <TrashIcon cn="w-4 h-4" /> <span className="hidden sm:inline">เริ่มใหม่</span>
+        </button>
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // LOCAL STORAGE — saves the user's state across page reloads
+  // ==========================================================================
+  const STORAGE_KEY = 'solar-roi-state-v1';
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }
+  function persistedState(key, fallback) {
+    const saved = loadState();
+    return (saved && saved[key] !== undefined) ? saved[key] : fallback;
+  }
+
+  // ==========================================================================
+  // DASHBOARD
+  // ==========================================================================
+  function Dashboard() {
+    const [mode, setMode] = useState(() => persistedState('mode', 'estimated'));
+    const [estimated, setEstimated] = useState(() => persistedState('estimated', {
+      mode: 'estimated', monthlyBillTHB: 4500, daytimeUsagePercent: 50,
+    }));
+    const [detailed, setDetailed] = useState(() => persistedState('detailed', {
+      mode: 'detailed', appliances: [], baselineKwhMonth: 0, baselineDaytimePercent: 35,
+    }));
+    const [system, setSystem]       = useState(() => persistedState('system',    { systemSizeKw: 5, installationCostTHB: 180000 }));
+    const [tariff, setTariff]       = useState(() => persistedState('tariff',    DEFAULT_TARIFF));
+    const [region, setRegion]       = useState(() => persistedState('region',    DEFAULT_REGION));
+    const [pr,     setPr]           = useState(() => persistedState('pr',        DEFAULT_PR));
+    const [equipment, setEquipment] = useState(() => persistedState('equipment', DEFAULT_EQUIPMENT));
+    const [autoSyncSize, setAutoSyncSize] = useState(() => persistedState('autoSyncSize', true));
+    const [adv, setAdv] = useState(() => persistedState('adv', DEFAULT_ADVANCED));
+
+    // Dark mode (guard against legacy localStorage where adv might lack darkMode)
+    useEffect(() => {
+      document.documentElement.classList.toggle('dark', !!(adv && adv.darkMode));
+    }, [adv && adv.darkMode]);
+
+    // Persist state to localStorage on every change
+    useEffect(() => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          mode, estimated, detailed, system, tariff, region, pr, equipment, autoSyncSize, adv,
+        }));
+      } catch { /* localStorage may be unavailable in private mode */ }
+    }, [mode, estimated, detailed, system, tariff, region, pr, equipment, adv]);
+
+    // Auto-sync ONLY system size from equipment specs.
+    // PR remains manually controlled by the LocationSettings slider —
+    // the equipment section shows "PR ที่แนะนำ" as a hint instead.
+    useEffect(() => {
+      if (!autoSyncSize) return;
+      const effKw = effectiveSystemKw(equipment);
+      setSystem(prev => ({
+        ...prev,
+        systemSizeKw: Math.max(1, Math.round(effKw * 2) / 2),
+      }));
+    }, [equipment, autoSyncSize]);
+
+    const userInput  = mode === 'estimated' ? estimated : detailed;
+    const result     = useMemo(() => calculate(userInput, system, tariff, region, pr, equipment, adv),
+                               [userInput, system, tariff, region, pr, equipment, adv]);
+    const projection = useMemo(() => buildYearlyProjection(result, system.installationCostTHB, adv, 20),
+                               [result, system.installationCostTHB, adv]);
+    const monthly    = useMemo(() => buildMonthlyBreakdown(result, system, region, pr, equipment),
+                               [result, system, region, pr, equipment]);
+
+    // Footer summary
+    const rateNote = tariff.mode === 'flat'
+      ? `อัตรา ${formatRate(tariff.flatRate)}`
+      : `On-peak ${formatRate(tariff.onPeakRate)} · Off-peak ${formatRate(tariff.offPeakRate)}`;
+    const locNote = `${REGIONS[region].name} · แดดเฉลี่ย ${avgPsh(region).toFixed(2)} ชม./วัน · PR ${Math.round(pr * 100)}%`;
+
+    // Build export payload
+    const getExportData = () => ({
+      meta: {
+        title: 'รายงานการคำนวณ ROI โซลาร์เซลล์',
+        timestamp: new Date().toISOString(),
+        date_th: new Date().toLocaleDateString('th-TH'),
+      },
+      input: { mode, ...(mode === 'estimated' ? estimated : detailed) },
+      tariff,
+      location: { region, regionName: REGIONS[region].name, avgPSH: avgPsh(region), pr },
+      system,
+      equipment,
+      result,
+      projection_10y: projection,
+      monthly_breakdown: monthly,
+    });
+
+    return (
+      <main className="min-h-screen w-full">
+        <header className="bg-gradient-to-r from-brand-600 to-brand-400 text-white">
+          <div className="max-w-7xl mx-auto px-6 py-8 flex items-center gap-4 flex-wrap">
+            <div className="bg-white/20 backdrop-blur-sm rounded-2xl p-3"><SunIcon cn="w-8 h-8" /></div>
+            <div className="flex-1 min-w-[260px]">
+              <h1 className="text-2xl md:text-3xl font-bold">คำนวณคืนทุนโซลาร์เซลล์</h1>
+              <p className="text-white/90 text-sm md:text-base">
+                ประเมินขนาดระบบที่เหมาะสมและจุดคุ้มทุนสำหรับบ้านของคุณ
+              </p>
+            </div>
+            <ExportButtons getExportData={getExportData} />
+          </div>
+          <div className="print-only max-w-7xl mx-auto px-6 pb-4 text-white text-xs">
+            พิมพ์เมื่อ {new Date().toLocaleString('th-TH')} · {locNote}
+          </div>
+        </header>
+
+        <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
+          {/* Print-only input snapshot — comprehensive settings used */}
+          <div className="print-only print-input-snapshot" style={{padding:'2mm 5mm',fontSize:'6.5pt',lineHeight:'1.3'}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:'2mm',marginBottom:'1mm'}}>
+              {/* Col 1: Equipment */}
+              <div>
+                <strong style={{fontSize:'7pt'}}>🔧 อุปกรณ์ที่ติดตั้ง</strong><br/>
+                แผงโซลาร์: {equipment.panels.watts}W × {equipment.panels.count} แผง = {(equipment.panels.watts * equipment.panels.count / 1000).toFixed(2)} kWp<br/>
+                อินเวอร์เตอร์: {equipment.inverter.capacityKw} kW ({equipment.inverter.efficiency}% eff)<br/>
+                DC/AC Ratio: {dcAcRatio(equipment).toFixed(2)}<br/>
+                {equipment.battery.enabled
+                  ? <>แบตเตอรี่: {equipment.battery.capacityKwh} kWh ({equipment.battery.efficiency}% eff)</>
+                  : <>แบตเตอรี่: ไม่มี</>}
+              </div>
+              {/* Col 2: Cost & System */}
+              <div>
+                <strong style={{fontSize:'7pt'}}>💰 ต้นทุนและระบบ</strong><br/>
+                ขนาดระบบ (Effective): {system.systemSizeKw} kW<br/>
+                ต้นทุนติดตั้ง: {formatTHB(system.installationCostTHB)}<br/>
+                ต้นทุน/kW: {formatTHB(Math.round(Number(system.installationCostTHB) / Math.max(system.systemSizeKw, 0.1)))} / kW<br/>
+                โหมดข้อมูล: {mode === 'estimated' ? 'ประเมินคร่าวๆ' : 'ละเอียด (อุปกรณ์)'}
+              </div>
+              {/* Col 3: Tariff */}
+              <div>
+                <strong style={{fontSize:'7pt'}}>⚡ อัตราค่าไฟฟ้า</strong><br/>
+                ประเภท: {tariff.mode === 'flat' ? 'อัตราเดียว (Flat)' : 'TOU (ตามเวลา)'}<br/>
+                {tariff.mode === 'flat'
+                  ? <>อัตรา: {formatRate(tariff.flatRate)}</>
+                  : <>On-peak (จ-ศ 09-22): {formatRate(tariff.onPeakRate)}<br/>
+                    Off-peak (อื่นๆ): {formatRate(tariff.offPeakRate)}</>}
+              </div>
+              {/* Col 4: Location & Mounting */}
+              <div>
+                <strong style={{fontSize:'7pt'}}>📍 ตำแหน่งและการติดตั้ง</strong><br/>
+                ภูมิภาค: {REGIONS[region].name}<br/>
+                แดดเฉลี่ย: {avgPsh(region).toFixed(2)} ชม./วัน<br/>
+                PR: {Math.round(pr * 100)}%<br/>
+                ทิศ: {{ south:'ใต้', east:'ตะวันออก', west:'ตะวันตก', north:'เหนือ' }[equipment.mounting.azimuth] || 'ใต้'} · องศาเอียง: {equipment.mounting.tilt}°
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 grid-flow-dense no-print">
+            {/* 1. Usage Data */}
+            <div className={clsx(
+              "bg-white rounded-2xl shadow-card p-6 order-1",
+              mode === 'detailed' ? "lg:col-span-3" : "lg:col-span-2"
+            )}>
+              <h2 className="text-lg font-semibold text-ink-900 mb-4">ข้อมูลการใช้ไฟฟ้า</h2>
+              <ModeToggle mode={mode} onChange={setMode} />
+              <div className="mt-6">
+                {mode === 'estimated'
+                  ? <EstimatedMode value={estimated} onChange={setEstimated} tariff={tariff} />
+                  : <DetailedMode  value={detailed}  onChange={setDetailed}  tariff={tariff} />}
+              </div>
+            </div>
+
+            {/* 2. Equipment Section */}
+            <div className="lg:col-span-2 order-2">
+              <EquipmentSection
+                value={equipment}
+                onChange={setEquipment}
+                system={system}
+                onSystemChange={setSystem}
+                pr={pr}
+                onPrChange={setPr}
+                autoSyncSize={autoSyncSize}
+                onAutoSyncChange={setAutoSyncSize} />
+            </div>
+
+            {/* 3. Settings Sidebar */}
+            <div className={clsx(
+              "space-y-6 order-3",
+              mode === 'estimated' ? "lg:col-span-1 lg:row-span-2" : "lg:col-span-1"
+            )}>
+              <LocationSettings region={region} onRegionChange={setRegion} pr={pr} onPrChange={setPr} />
+              <TariffSettings value={tariff} onChange={setTariff} />
+              <AdvancedSettings value={adv} onChange={setAdv} />
+            </div>
+          </div>
+
+          <SummaryCards result={result} system={system} tariff={tariff} adv={adv} />
+
+          <DetailedSummary result={result} system={system} tariff={tariff} adv={adv} />
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 print-charts-row">
+            <div className="bg-white rounded-2xl shadow-card p-6">
+              <h3 className="text-lg font-semibold text-ink-900 mb-1">เปรียบเทียบค่าไฟสะสม 20 ปี</h3>
+              <p className="text-sm text-ink-500 mb-4">ติดโซลาร์ vs. ไม่ติดโซลาร์ (รวมค่าติดตั้งเริ่มต้น)</p>
+              <ComparisonChart data={projection} />
+            </div>
+            <div className="bg-white rounded-2xl shadow-card p-6">
+              <h3 className="text-lg font-semibold text-ink-900 mb-1">การใช้พลังงานรายเดือน</h3>
+              <p className="text-sm text-ink-500 mb-4">พลังงานที่ใช้ทั้งหมด เทียบกับ ที่โซลาร์ผลิตทดแทน (kWh)</p>
+              <EnergyBreakdownChart data={monthly} hasBattery={equipment.battery && equipment.battery.enabled} />
+            </div>
+          </div>
+
+          {/* Monthly Bill Before/After Chart — screen only */}
+          <div className="bg-white rounded-2xl shadow-card p-6 no-print">
+            <h3 className="text-lg font-semibold text-ink-900 mb-1 flex items-center gap-2">
+              <BanknoteIcon cn="w-5 h-5 text-brand-500" /> ค่าไฟรายเดือน ก่อน vs. หลังติดโซลาร์
+            </h3>
+            <p className="text-sm text-ink-500 mb-4">เปรียบเทียบค่าไฟ (บาท) แต่ละเดือน</p>
+            <div className="h-[300px]">
+              <Recharts.ResponsiveContainer width="100%" height="100%">
+                <Recharts.BarChart data={monthly.map((m, i) => {
+                  const onPkRate = tariff.mode === 'flat' ? tariff.flatRate : tariff.onPeakRate;
+                  const offPkRate = tariff.mode === 'flat' ? tariff.flatRate : tariff.offPeakRate;
+                  const avgRate = (onPkRate + offPkRate) / 2;
+                  const billBefore = m.totalUsageKwh * avgRate;
+                  const billAfter = m.gridUsageKwh * avgRate;
+                  return { ...m, billBefore: Math.round(billBefore), billAfter: Math.round(billAfter) };
+                })} margin={{ top: 25, right: 20, bottom: 5, left: 10 }}>
+                  <Recharts.CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <Recharts.XAxis dataKey="monthLabel" tick={{ fontSize: 12 }} />
+                  <Recharts.YAxis tickFormatter={(v) => (v/1000).toFixed(1) + 'k'} tick={{ fontSize: 11 }} />
+                  <Recharts.Tooltip formatter={(v) => formatTHB(v)} />
+                  <Recharts.Legend />
+                  <Recharts.Bar dataKey="billBefore" name="ก่อนโซลาร์" fill="#f87171" radius={[4,4,0,0]}>
+                    <Recharts.LabelList dataKey="billBefore" position="top"
+                      formatter={(v) => v >= 1000 ? (v/1000).toFixed(1) + 'k' : Math.round(v)}
+                      style={{ fontSize: 9, fill: '#991b1b', fontWeight: 500 }} />
+                  </Recharts.Bar>
+                  <Recharts.Bar dataKey="billAfter" name="หลังโซลาร์" fill="#34d399" radius={[4,4,0,0]}>
+                    <Recharts.LabelList dataKey="billAfter" position="top"
+                      formatter={(v) => v >= 1000 ? (v/1000).toFixed(1) + 'k' : Math.round(v)}
+                      style={{ fontSize: 9, fill: '#065f46', fontWeight: 500 }} />
+                  </Recharts.Bar>
+                </Recharts.BarChart>
+              </Recharts.ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Excess Solar Months Detail */}
+          <ExcessSolarDetail data={monthly} adv={adv} />
+
+          {/* System Comparison (full table — screen only) */}
+          <SystemComparison
+            baseResult={result} baseSystem={system}
+            tariff={tariff} region={region} pr={pr}
+            equipment={equipment} userInput={userInput} adv={adv} />
+
+          {/* Recommended Size Summary — focused on the starred option (visible everywhere) */}
+          <RecommendedSizeSummary
+            baseResult={result} baseSystem={system}
+            tariff={tariff} region={region} pr={pr}
+            equipment={equipment} userInput={userInput} adv={adv} />
+
+          {/* Print-only extra summary cards replacing hidden charts */}
+          <PrintExtraSummary
+            monthly={monthly} result={result} system={system}
+            tariff={tariff} adv={adv} projection={projection} />
+
+          <div className="flex justify-center gap-3 no-print">
+            <ShareButton getExportData={getExportData} />
+          </div>
+
+          <footer className="text-center text-xs text-ink-500 pb-6">
+            ตัวเลขเป็นการประมาณการเบื้องต้น — {rateNote}
+            <br />{locNote}
+            <br />ขอใบเสนอราคาจริงจากผู้ติดตั้งที่ได้รับการรับรอง
+          </footer>
+        </div>
+      </main>
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById('root')).render(<Dashboard />);
+  </script>
+</body>
+</html>

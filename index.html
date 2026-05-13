@@ -286,7 +286,7 @@
   const DEFAULT_EQUIPMENT = {
     panels:   { watts: 550, count: 10, brand: '' },
     inverter: { capacityKw: 5, efficiency: 96, type: 'string', brand: '' },
-    battery:  { enabled: false, capacityKwh: 5, efficiency: 90 },
+    battery:  { enabled: false, capacityKwh: 5, efficiency: 90, costTHB: 75000 },
     mounting: { tilt: 15, azimuth: 'south' },  // azimuth: south | east | west | north
   };
 
@@ -300,6 +300,19 @@
   function panelTotalKw(eq)     { return (eq.panels.watts * eq.panels.count) / 1000; }
   function effectiveSystemKw(eq){ return Math.min(panelTotalKw(eq), eq.inverter.capacityKw); }
   function dcAcRatio(eq)        { return eq.inverter.capacityKw > 0 ? panelTotalKw(eq) / eq.inverter.capacityKw : 0; }
+
+  /**
+   * Total install cost used for break-even / ROI calculations.
+   * = solar installation cost (panels + inverter + labor) + battery cost (if enabled).
+   * Without this, enabling the battery toggle adds savings but no cost,
+   * making ROI artificially optimistic.
+   */
+  function totalInstallCost(system, equipment) {
+    const sysCost = Number(system && system.installationCostTHB) || 0;
+    const bat     = equipment && equipment.battery;
+    const batCost = (bat && bat.enabled) ? (Number(bat.costTHB) || 0) : 0;
+    return sysCost + batCost;
+  }
 
   function azimuthFactor(az) {
     return ({ south: 1.0, east: 0.93, west: 0.93, north: 0.78 })[az] || 1.0;
@@ -703,7 +716,10 @@
 
     // ⭐ Break-even: when escalation/degradation is on, simple cost÷savings is wrong.
     //   Use projection (which respects rateFactor & solarFactor) and find the cross-over year.
-    let bev = breakEvenYears(system.installationCostTHB, yearly);
+    //   Cost basis = solar install + battery cost (if enabled) — so toggling battery
+    //   on now correctly increases the investment to amortize.
+    const totalCost = totalInstallCost(system, equipment);
+    let bev = breakEvenYears(totalCost, yearly);
     const hasYearlyAdv = !!(adv && (
       (adv.rateEscalation   && adv.rateEscalation.enabled) ||
       (adv.panelDegradation && adv.panelDegradation.enabled)
@@ -713,7 +729,7 @@
         annualBillNoSolarTHB: annNoSolar,
         annualSavingsTHB:     yearly,   // already includes nmRevenue
       };
-      const proj = buildYearlyProjection(tempResult, system.installationCostTHB, adv, 30);
+      const proj = buildYearlyProjection(tempResult, totalCost, adv, 30);
       for (let y = 1; y <= 30; y++) {
         const row = proj[y];
         if (row && row.cumulativeWithSolar <= row.cumulativeNoSolar) {
@@ -755,6 +771,7 @@
       annualSavingsTHB: yearly,              // includes net metering
       annualBillNoSolarTHB: annNoSolar,
       annualBillWithSolarTHB: annWith,
+      totalInstallCostTHB: totalCost,        // solar + battery (if any) — used by break-even/ROI
       breakEvenYears: bev,
       recommendedSizeKw: recommended,
       coveragePercent: Math.min(coverage, 999),
@@ -1584,9 +1601,10 @@
     const savingsHint = hasNm
       ? 'รวมขายคืน ' + formatTHB(result.annualNetMeteringTHB || 0) + '/ปี'
       : 'เฉลี่ย ' + formatRate(avgOffsetRate) + ' (ที่ทดแทนได้)';
+    const summaryCost = result.totalInstallCostTHB != null ? result.totalInstallCostTHB : system.installationCostTHB;
     const breakEvenHint = (hasEsc || hasDeg)
-      ? 'รวมค่าไฟขึ้น/แผงเสื่อมแล้ว · ' + formatTHB(system.installationCostTHB)
-      : 'จากต้นทุน ' + formatTHB(system.installationCostTHB);
+      ? 'รวมค่าไฟขึ้น/แผงเสื่อมแล้ว · ' + formatTHB(summaryCost)
+      : 'จากต้นทุน ' + formatTHB(summaryCost);
 
     const cards = [
       { icon: <SunIcon cn="w-5 h-5" />,   label: 'ขนาดระบบที่แนะนำ',
@@ -1893,12 +1911,18 @@
   // RECOMMENDED SIZE SUMMARY — focused card highlighting the starred option ⭐ NEW
   // ==========================================================================
   function RecommendedSizeSummary({ baseResult, baseSystem, tariff, region, pr, equipment, userInput, adv }) {
-    const proj25 = buildYearlyProjection(baseResult, baseSystem.installationCostTHB, adv, 25);
+    // Use total cost (solar + battery if any) so projections include the battery investment.
+    const totalCost = baseResult.totalInstallCostTHB != null
+      ? baseResult.totalInstallCostTHB
+      : totalInstallCost(baseSystem, equipment);
+    const proj25 = buildYearlyProjection(baseResult, totalCost, adv, 25);
     const netProfit25 = proj25[25] ? proj25[25].cumulativeNoSolar - proj25[25].cumulativeWithSolar : 0;
     const netProfit10 = proj25[10] ? proj25[10].cumulativeNoSolar - proj25[10].cumulativeWithSolar : 0;
     const monthlySavings = baseResult.annualSavingsTHB / 12;
     const costPerKw = baseSystem.installationCostTHB / Math.max(baseSystem.systemSizeKw, 0.1);
     const yearsToProfit = baseResult.breakEvenYears;
+    const batteryCost = (equipment && equipment.battery && equipment.battery.enabled)
+      ? (Number(equipment.battery.costTHB) || 0) : 0;
 
     return (
       <div className="bg-gradient-to-br from-brand-50 to-amber-50 border-2 border-brand-200 rounded-2xl shadow-card p-6 no-print">
@@ -1911,9 +1935,12 @@
             <p className="text-sm text-ink-500">ขนาด {baseSystem.systemSizeKw} kW — ภาพรวมที่ตอบโจทย์</p>
           </div>
           <div className="text-right">
-            <p className="text-[11px] text-ink-500 uppercase tracking-wide">ต้นทุนติดตั้ง</p>
-            <p className="text-2xl font-bold text-brand-700">{formatTHB(baseSystem.installationCostTHB)}</p>
-            <p className="text-[10px] text-ink-500">{formatTHB(costPerKw)} / kW</p>
+            <p className="text-[11px] text-ink-500 uppercase tracking-wide">{batteryCost > 0 ? 'ต้นทุนรวม (แผง + แบต)' : 'ต้นทุนติดตั้ง'}</p>
+            <p className="text-2xl font-bold text-brand-700">{formatTHB(totalCost)}</p>
+            <p className="text-[10px] text-ink-500">
+              {formatTHB(costPerKw)} / kW
+              {batteryCost > 0 && <> · แบต {formatTHB(batteryCost)}</>}
+            </p>
           </div>
         </div>
 
@@ -1984,8 +2011,9 @@
     const avgGen = result.annualSolarKwh / 12;
     const avgUsage = result.monthlyKwh;
 
-    // Recalculate 25-year projection (since main projection is only 20)
-    const proj25Data = buildYearlyProjection(result, system.installationCostTHB, adv, 25);
+    // Recalculate 25-year projection (since main projection is only 20).
+    // Use total install cost so battery investment is reflected.
+    const proj25Data = buildYearlyProjection(result, result.totalInstallCostTHB != null ? result.totalInstallCostTHB : system.installationCostTHB, adv, 25);
     const proj25 = proj25Data[25] || { cumulativeNoSolar: 0, cumulativeWithSolar: 0 };
 
     return (
@@ -2060,11 +2088,13 @@
     ].filter((v, i, a) => a.indexOf(v) === i); // dedupe
 
     const rows = sizes.map(sz => {
+      // Scale solar install cost linearly with size; battery cost (if any) is added on top.
       const sys = { ...baseSystem, systemSizeKw: sz, installationCostTHB: Math.round(sz * (baseSystem.installationCostTHB / baseSz)) };
       const r = calculate(userInput, sys, tariff, region, pr, equipment, adv);
-      const proj = buildYearlyProjection(r, sys.installationCostTHB, adv, 25);
+      const totalCost = r.totalInstallCostTHB != null ? r.totalInstallCostTHB : sys.installationCostTHB;
+      const proj = buildYearlyProjection(r, totalCost, adv, 25);
       const netProfit25 = (proj[25] ? proj[25].cumulativeNoSolar - proj[25].cumulativeWithSolar : 0);
-      return { sz, cost: sys.installationCostTHB, r, netProfit25 };
+      return { sz, cost: totalCost, r, netProfit25 };
     });
 
     return (
@@ -2170,8 +2200,12 @@
     // Break-even (already adv-adjusted by calculate())
     const effectiveBreakEven     = result.breakEvenYears;
 
-    // Use projection to get accurate 10/25 year totals (with escalation + degradation)
-    const proj25 = buildYearlyProjection(result, system.installationCostTHB, adv, 25);
+    // Use projection to get accurate 10/25 year totals (with escalation + degradation).
+    // Total cost = solar install + battery cost (if enabled). This makes ROI honest.
+    const totalCost = result.totalInstallCostTHB != null
+      ? result.totalInstallCostTHB
+      : system.installationCostTHB;
+    const proj25 = buildYearlyProjection(result, totalCost, adv, 25);
     const cumNoSolar10  = proj25[10] ? proj25[10].cumulativeNoSolar  : result.annualBillNoSolarTHB * 10;
     const cumWithSolar10= proj25[10] ? proj25[10].cumulativeWithSolar: 0;
     const cumNoSolar25  = proj25[25] ? proj25[25].cumulativeNoSolar  : result.annualBillNoSolarTHB * 25;
@@ -2181,8 +2215,8 @@
     const netProfit10Y    = totalSavings10Y;  // cumWithSolar already includes install cost
     const netProfit25Y    = totalSavings25Y;
 
-    const roiPercent       = system.installationCostTHB > 0
-      ? (effectiveAnnualSavings / system.installationCostTHB) * 100 : 0;
+    const roiPercent       = totalCost > 0
+      ? (effectiveAnnualSavings / totalCost) * 100 : 0;
     const annualGenKwh     = result.annualSolarKwh;
     const annualOffsetKwh  = result.annualSolarOffsetKwh;
     const annualNeedKwh    = result.monthlyKwh * 12;
@@ -2205,7 +2239,10 @@
         <div className="flex items-baseline justify-between flex-wrap gap-2">
           <h2 className="text-xl font-semibold text-ink-900">สรุปผลการคำนวณ</h2>
           <p className="text-xs text-ink-500">
-            ระบบ {system.systemSizeKw.toFixed(1)} kW · ต้นทุน {formatTHB(system.installationCostTHB)}
+            ระบบ {system.systemSizeKw.toFixed(1)} kW · ต้นทุน {formatTHB(totalCost)}
+            {totalCost !== system.installationCostTHB && (
+              <span className="text-ink-400"> (แผง {formatTHB(system.installationCostTHB)} + แบต {formatTHB(totalCost - system.installationCostTHB)})</span>
+            )}
             {hasAdv && <span className="text-brand-600 font-medium"> · ⚙ ตั้งค่าขั้นสูง ON</span>}
           </p>
         </div>
@@ -2564,9 +2601,27 @@
                     onChange={(e) => setBattery({ efficiency: nv(e.target.value) })}
                     className="w-full mt-1 px-3 py-2 rounded-lg border border-ink-300 text-sm" />
                 </label>
+                <label className="block col-span-2">
+                  <span className="text-[11px] text-ink-500 flex items-center justify-between">
+                    <span>ราคาแบตเตอรี่ (บาท) — รวมในต้นทุนคำนวณคืนทุน</span>
+                    <button type="button"
+                      onClick={() => setBattery({ costTHB: Math.round((Number(value.battery.capacityKwh) || 0) * 15000) })}
+                      className="text-[10px] text-brand-600 hover:text-brand-700 underline">
+                      ประมาณ {formatTHB(Math.round((Number(value.battery.capacityKwh) || 0) * 15000))}
+                    </button>
+                  </span>
+                  <input type="number" min={0} step={1000}
+                    value={value.battery.costTHB || 0}
+                    onChange={(e) => setBattery({ costTHB: nv(e.target.value) })}
+                    className="w-full mt-1 px-3 py-2 rounded-lg border border-ink-300 text-sm" />
+                  <span className="text-[10px] text-ink-500">
+                    ราคาตลาด LiFePO4 ~12,000–20,000 บาท/kWh (รวมติดตั้ง){(Number(value.battery.capacityKwh) > 0) && <> · ปัจจุบัน {formatTHB(Math.round((Number(value.battery.costTHB) || 0) / Number(value.battery.capacityKwh)))} / kWh</>}
+                  </span>
+                </label>
               </div>
               <p className="text-[11px] text-blue-700 mt-2 pl-6 bg-blue-50 border border-blue-100 px-2 py-1.5 rounded-lg ml-6 mr-0">
                 แบตเตอรี่จะเก็บไฟส่วนเกินกลางวันมาใช้กลางคืน — เพิ่มการประหยัดในอัตรา Off-peak
+                <br />⚠ ต้นทุนแบตฯ จะถูกบวกเข้าต้นทุนรวม เพื่อคำนวณจุดคุ้มทุน/ROI ที่ถูกต้อง
               </p>
             </>
           )}
@@ -2790,7 +2845,8 @@
     const userInput  = mode === 'estimated' ? estimated : detailed;
     const result     = useMemo(() => calculate(userInput, system, tariff, region, pr, equipment, adv),
                                [userInput, system, tariff, region, pr, equipment, adv]);
-    const projection = useMemo(() => buildYearlyProjection(result, system.installationCostTHB, adv, 20),
+    // Use total cost (solar + battery) so the projection chart starts from the true investment.
+    const projection = useMemo(() => buildYearlyProjection(result, result.totalInstallCostTHB != null ? result.totalInstallCostTHB : system.installationCostTHB, adv, 20),
                                [result, system.installationCostTHB, adv]);
     const monthly    = useMemo(() => buildMonthlyBreakdown(result, system, region, pr, equipment),
                                [result, system, region, pr, equipment]);
@@ -2847,14 +2903,15 @@
                 อินเวอร์เตอร์: {equipment.inverter.capacityKw} kW ({equipment.inverter.efficiency}% eff)<br/>
                 DC/AC Ratio: {dcAcRatio(equipment).toFixed(2)}<br/>
                 {equipment.battery.enabled
-                  ? <>แบตเตอรี่: {equipment.battery.capacityKwh} kWh ({equipment.battery.efficiency}% eff)</>
+                  ? <>แบตเตอรี่: {equipment.battery.capacityKwh} kWh ({equipment.battery.efficiency}% eff) · {formatTHB(equipment.battery.costTHB || 0)}</>
                   : <>แบตเตอรี่: ไม่มี</>}
               </div>
               {/* Col 2: Cost & System */}
               <div>
                 <strong style={{fontSize:'7pt'}}>💰 ต้นทุนและระบบ</strong><br/>
                 ขนาดระบบ (Effective): {system.systemSizeKw} kW<br/>
-                ต้นทุนติดตั้ง: {formatTHB(system.installationCostTHB)}<br/>
+                ต้นทุนติดตั้ง (โซลาร์): {formatTHB(system.installationCostTHB)}<br/>
+                {equipment.battery.enabled && <>ราคาแบตฯ: {formatTHB(equipment.battery.costTHB || 0)}<br/>ต้นทุนรวม: {formatTHB(totalInstallCost(system, equipment))}<br/></>}
                 ต้นทุน/kW: {formatTHB(Math.round(Number(system.installationCostTHB) / Math.max(system.systemSizeKw, 0.1)))} / kW<br/>
                 โหมดข้อมูล: {mode === 'estimated' ? 'ประเมินคร่าวๆ' : 'ละเอียด (อุปกรณ์)'}
               </div>

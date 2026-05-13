@@ -291,9 +291,10 @@
   };
 
   const DEFAULT_ADVANCED = {
-    rateEscalation:   { enabled: false, rate: 3 },     // % per year
-    panelDegradation: { enabled: false, rate: 0.5 },   // % per year
-    netMetering:      { enabled: false, rate: 2.20 },   // THB/kWh buyback
+    rateEscalation:   { enabled: true,  rate: 3 },     // % per year
+    panelDegradation: { enabled: true,  rate: 0.5 },   // % per year
+    netMetering:      { enabled: true,  rate: 2.20 },  // THB/kWh buyback
+    vat:              { enabled: true,  rate: 7 },     // % applied to install + battery cost
     darkMode: false,
   };
 
@@ -303,15 +304,18 @@
 
   /**
    * Total install cost used for break-even / ROI calculations.
-   * = solar installation cost (panels + inverter + labor) + battery cost (if enabled).
+   * = (solar installation cost + battery cost) × (1 + VAT%)
    * Without this, enabling the battery toggle adds savings but no cost,
-   * making ROI artificially optimistic.
+   * making ROI artificially optimistic. VAT is applied on top when enabled
+   * (typical Thai contractor quotes that exclude VAT).
    */
-  function totalInstallCost(system, equipment) {
+  function totalInstallCost(system, equipment, adv) {
     const sysCost = Number(system && system.installationCostTHB) || 0;
     const bat     = equipment && equipment.battery;
     const batCost = (bat && bat.enabled) ? (Number(bat.costTHB) || 0) : 0;
-    return sysCost + batCost;
+    const subtotal = sysCost + batCost;
+    const vat = (adv && adv.vat && adv.vat.enabled) ? (Number(adv.vat.rate) || 0) / 100 : 0;
+    return subtotal * (1 + vat);
   }
 
   function azimuthFactor(az) {
@@ -658,11 +662,18 @@
     // Month-by-month allocation:
     // 1. Solar offsets on-peak demand FIRST (saves at on-peak rate — most valuable)
     // 2. Then off-peak demand within solar window (weekday 6-9 + weekend daytime)
-    // 3. Excess solar charges battery → discharges at night (off-peak rate)
+    // 3. Excess solar charges battery → discharges at night (18:00–06:00)
+    //    Battery night window: weekday 18–22 = on-peak (4h), 22–06 = off-peak (8h)
+    //    Weekend: all off-peak (12h)
     const battery = equipment ? equipment.battery : null;
     const batMonthlyCap = (battery && battery.enabled)
       ? battery.capacityKwh * (battery.efficiency / 100) * 30
       : 0;
+
+    // Battery discharge on-peak fraction: weekday 18:00-22:00 = 4 hrs on-peak out of 12 hrs night
+    // Weekday fraction = 5/7, on-peak night fraction = 4/12
+    const BAT_ONPEAK_FRAC  = (5/7) * (4/12);   // ~23.8%
+    const BAT_OFFPEAK_FRAC = 1 - BAT_ONPEAK_FRAC; // ~76.2%
 
     let annualOnPeakOff   = 0;
     let annualOffPeakOff  = 0;
@@ -671,38 +682,49 @@
 
     for (let m = 0; m < 12; m++) {
       const solarM = monthlySolar[m];
-      // Step 1: solar → on-peak demand
+      // Step 1: solar → on-peak demand (most valuable: saves at on-peak rate)
       const onPeakUsed = Math.min(solarOnPeakReplaceable, solarM);
       let remaining   = solarM - onPeakUsed;
-      // Step 2: solar → off-peak in solar window
-      const offPeakUsed = Math.min(solarOffPeakReplaceable, remaining);
-      remaining -= offPeakUsed;
-      // Step 3: battery — cap per-day to battery capacity for realism
+
+      // Step 2: solar → battery charging BEFORE off-peak daytime offset
+      //   Why? Battery discharges at night spanning on-peak (18–22 weekdays)
+      //   so blended battery rate (~3.38฿) > off-peak daytime rate (2.63฿).
+      //   Charging battery first maximizes total savings.
       let batteryUsed = 0;
       if (battery && battery.enabled && remaining > 0) {
         const eff = battery.efficiency / 100;
         const daysInMonth = DAYS_IN_MONTH[m];
-        const dailyExcess = remaining / daysInMonth;
-        const dailyCharge = Math.min(dailyExcess, battery.capacityKwh) * eff;
-        const dailyNightDemand = nighttimeKwh;  // monthly night demand used as cap
-        batteryUsed = Math.min(dailyCharge * daysInMonth, dailyNightDemand);
-        remaining -= batteryUsed / eff;
+        const dailyRemaining = remaining / daysInMonth;
+        // Battery can charge up to its capacity per day
+        const dailyNightDemand = nighttimeKwh / daysInMonth;
+        const dailyMaxDischarge = Math.min(battery.capacityKwh * eff, dailyNightDemand);
+        const dailyChargeNeeded = dailyMaxDischarge / eff;
+        const dailyActualCharge = Math.min(dailyRemaining, dailyChargeNeeded);
+        batteryUsed = dailyActualCharge * eff * daysInMonth;
+        remaining -= dailyActualCharge * daysInMonth;
       }
+
+      // Step 3: solar → off-peak in solar window (remaining after battery)
+      const offPeakUsed = Math.min(solarOffPeakReplaceable, remaining);
+      remaining -= offPeakUsed;
+
       annualOnPeakOff  += onPeakUsed;
       annualOffPeakOff += offPeakUsed;
       annualBatteryOff += batteryUsed;
-      annualExcess     += remaining;
+      annualExcess     += Math.max(remaining, 0);
     }
 
     const annualSolarOff = annualOnPeakOff + annualOffPeakOff;     // direct solar (no battery)
     const annualTotalOff = annualSolarOff + annualBatteryOff;       // including battery
 
-    // Apply rates
+    // Apply rates — battery discharge spans on-peak (18–22 weekdays) AND off-peak
     const onPeakRate  = tariff.mode === 'flat' ? tariff.flatRate : tariff.onPeakRate;
     const offPeakRate = tariff.mode === 'flat' ? tariff.flatRate : tariff.offPeakRate;
+    const batBlendedRate = BAT_ONPEAK_FRAC * onPeakRate + BAT_OFFPEAK_FRAC * offPeakRate;
+    const annualBatterySavings = annualBatteryOff * batBlendedRate;
     let yearly = annualOnPeakOff  * onPeakRate
                + annualOffPeakOff * offPeakRate
-               + annualBatteryOff * offPeakRate;
+               + annualBatterySavings;
 
     // ⭐ Net Metering: sell wasted excess solar back to the grid (Year-1 revenue)
     const nmEnabled = !!(adv && adv.netMetering && adv.netMetering.enabled);
@@ -716,9 +738,9 @@
 
     // ⭐ Break-even: when escalation/degradation is on, simple cost÷savings is wrong.
     //   Use projection (which respects rateFactor & solarFactor) and find the cross-over year.
-    //   Cost basis = solar install + battery cost (if enabled) — so toggling battery
-    //   on now correctly increases the investment to amortize.
-    const totalCost = totalInstallCost(system, equipment);
+    //   Cost basis = (solar install + battery cost) × (1 + VAT%) when VAT is enabled —
+    //   so toggling battery or VAT on now correctly increases the investment to amortize.
+    const totalCost = totalInstallCost(system, equipment, adv);
     let bev = breakEvenYears(totalCost, yearly);
     const hasYearlyAdv = !!(adv && (
       (adv.rateEscalation   && adv.rateEscalation.enabled) ||
@@ -754,6 +776,14 @@
     const coverage = annualReplaceable > 0
       ? (annualSolarOff / annualReplaceable) * 100 : 0;
 
+    // Battery detail fields for UI display
+    const batCapacity = (battery && battery.enabled) ? battery.capacityKwh : 0;
+    const batEff      = (battery && battery.enabled) ? battery.efficiency / 100 : 0;
+    const avgDailyBatCharge  = annualBatteryOff > 0 ? (annualBatteryOff / batEff) / 365 : 0;
+    const avgDailyBatDischarge = annualBatteryOff / 365;
+    const nightCoverage = (nighttimeKwh * 12) > 0
+      ? (annualBatteryOff / (nighttimeKwh * 12)) * 100 : 0;
+
     return {
       monthlyKwh, daytimeKwh, nighttimeKwh, monthlyBillTHB,
       onPeakBilledKwh: c.onPeakBilledKwh, offPeakBilledKwh: c.offPeakBilledKwh,
@@ -766,9 +796,16 @@
       annualOnPeakOffsetKwh: annualOnPeakOff,
       annualOffPeakOffsetKwh: annualOffPeakOff,
       annualBatteryOffsetKwh: annualBatteryOff,
+      annualBatterySavingsTHB: annualBatterySavings,  // battery-only savings
+      annualBatteryOnPeakKwh:  annualBatteryOff * BAT_ONPEAK_FRAC,
+      annualBatteryOffPeakKwh: annualBatteryOff * BAT_OFFPEAK_FRAC,
+      batBlendedRate,
+      avgDailyBatCharge,      // kWh charged per day (before efficiency)
+      avgDailyBatDischarge,   // kWh discharged per day (after efficiency)
+      nightCoveragePercent: Math.min(nightCoverage, 100),
       annualSolarExcessKwh: annualExcess,    // wasted solar (or sold via net metering)
       annualNetMeteringTHB: nmRevenueYear,   // Year-1 net metering revenue (already in yearly)
-      annualSavingsTHB: yearly,              // includes net metering
+      annualSavingsTHB: yearly,              // includes net metering + battery
       annualBillNoSolarTHB: annNoSolar,
       annualBillWithSolarTHB: annWith,
       totalInstallCostTHB: totalCost,        // solar + battery (if any) — used by break-even/ROI
@@ -811,9 +848,9 @@
   /**
    * Per-month breakdown for the chart — uses the SAME allocation as calculate():
    *   1. Solar replaces on-peak demand first (highest savings)
-   *   2. Then off-peak demand within solar window
-   *   3. Excess goes to battery (if any) for nighttime offset
-   *   4. Whatever's left is "wasted" excess solar
+   *   2. Solar charges battery (discharges at night 18:00–06:00 — worth more than off-peak)
+   *   3. Remaining solar offsets off-peak daytime demand
+   *   4. Whatever's left is "wasted" excess solar (or sold via net metering)
    */
   function buildMonthlyBreakdown(result, system, region, pr, equipment) {
     const monthlySolar = monthlySolarKwhArray(system.systemSizeKw, region, pr);
@@ -828,19 +865,26 @@
 
     return THAI_MONTHS.map((label, i) => {
       const solar = monthlySolar[i];
-      // Same allocation as calculate(): on-peak first, off-peak second, battery third
+      // Same allocation as calculate(): on-peak → battery → off-peak
       const onPeakUsed  = Math.min(onPeakRepl, solar);
       let remaining     = solar - onPeakUsed;
-      const offPeakUsed = Math.min(offPeakRepl, remaining);
-      remaining        -= offPeakUsed;
+
+      // Battery charging (before off-peak daytime offset)
       let batteryUsed   = 0;
       if (battery && battery.enabled && remaining > 0) {
         const daysInMonth = DAYS_IN_MONTH[i];
-        const dailyExcess = remaining / daysInMonth;
-        const dailyCharge = Math.min(dailyExcess, battery.capacityKwh) * batEff;
-        batteryUsed = Math.min(dailyCharge * daysInMonth, nightDemand);
-        remaining  -= batteryUsed / batEff;
+        const dailyRemaining = remaining / daysInMonth;
+        const dailyNightDemand = nightDemand / daysInMonth;
+        const dailyMaxDischarge = Math.min(battery.capacityKwh * batEff, dailyNightDemand);
+        const dailyChargeNeeded = dailyMaxDischarge / batEff;
+        const dailyActualCharge = Math.min(dailyRemaining, dailyChargeNeeded);
+        batteryUsed = dailyActualCharge * batEff * daysInMonth;
+        remaining  -= dailyActualCharge * daysInMonth;
       }
+
+      // Off-peak daytime offset (with remaining solar)
+      const offPeakUsed = Math.min(offPeakRepl, remaining);
+      remaining        -= offPeakUsed;
       const directOffset  = onPeakUsed + offPeakUsed;
       const totalOffset   = directOffset + batteryUsed;
       const excess        = Math.max(remaining, 0);
@@ -1592,10 +1636,12 @@
     const hasEsc = !!(adv && adv.rateEscalation   && adv.rateEscalation.enabled);
     const hasDeg = !!(adv && adv.panelDegradation && adv.panelDegradation.enabled);
     const hasNm  = !!(adv && adv.netMetering      && adv.netMetering.enabled);
+    const hasVat = !!(adv && adv.vat              && adv.vat.enabled);
     const advTags = [
       hasEsc && '+ค่าไฟขึ้น ' + (adv.rateEscalation.rate || 3) + '%/ปี',
       hasDeg && '−แผงเสื่อม ' + (adv.panelDegradation.rate || 0.5) + '%/ปี',
       hasNm  && '+ขายคืน ' + (adv.netMetering.rate || 2.20) + '฿',
+      hasVat && '+VAT ' + (adv.vat.rate || 7) + '%',
     ].filter(Boolean).join(' · ');
 
     const savingsHint = hasNm
@@ -1725,7 +1771,7 @@
               <CalcIcon cn="w-5 h-5 text-brand-500" /> ตั้งค่าขั้นสูง
             </h2>
             <p className="text-sm text-ink-500">
-              ค่าไฟเพิ่มรายปี · แผงเสื่อม · ขายไฟคืน · Dark mode
+              ค่าไฟเพิ่มรายปี · แผงเสื่อม · ขายไฟคืน · VAT · Dark mode
             </p>
           </div>
           <ChevronIcon cn={clsx('w-5 h-5 text-ink-500 transition-transform', open && 'rotate-180')} />
@@ -1775,6 +1821,20 @@
               </div>
             </ToggleRow>
 
+            <ToggleRow
+              label="+ VAT (ภาษีมูลค่าเพิ่ม)"
+              hint="บวก VAT ลงในต้นทุนติดตั้ง (แผง+แบต) — ผู้รับเหมามักเสนอราคาก่อน VAT"
+              checked={!!(value.vat && value.vat.enabled)}
+              onToggle={() => upd('vat', { enabled: !(value.vat && value.vat.enabled) })}>
+              <div className="flex items-center gap-2">
+                <input type="number" min={0} max={20} step={0.5}
+                  value={(value.vat && value.vat.rate) || 7}
+                  onChange={(e) => upd('vat', { rate: nv(e.target.value) })}
+                  className="w-20 px-2 py-1.5 rounded-lg border border-ink-300 text-sm text-center" />
+                <span className="text-sm text-ink-500">% ของต้นทุน</span>
+              </div>
+            </ToggleRow>
+
             <div className="border-t border-ink-100 pt-3">
               <ToggleRow
                 label="🌙 Dark Mode"
@@ -1783,6 +1843,156 @@
             </div>
           </div>
         )}
+      </div>
+    );
+  }
+
+  // ==========================================================================
+  // BATTERY SUMMARY — dedicated display of battery contribution ⭐ NEW
+  // ==========================================================================
+  function BatterySummary({ result, equipment, tariff }) {
+    const bat = equipment && equipment.battery;
+    if (!bat || !bat.enabled) return null;
+    const annBatKwh     = result.annualBatteryOffsetKwh || 0;
+    if (annBatKwh <= 0) {
+      // Battery enabled but no excess solar to charge it
+      return (
+        <div className="bg-white rounded-2xl shadow-card p-6 no-print">
+          <h3 className="text-lg font-semibold text-ink-900 mb-2 flex items-center gap-2">
+            <BatteryIcon cn="w-5 h-5 text-green-600" /> แบตเตอรี่กักเก็บพลังงาน
+          </h3>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+            <strong>⚠ ไม่มีไฟส่วนเกินจากโซลาร์มาชาร์จแบต</strong>
+            <br />แบตเตอรี่จะเริ่มทำงานเมื่อโซลาร์ผลิตไฟเกินความต้องการกลางวัน
+            — ลองเพิ่มขนาดระบบ หรือลดการใช้ไฟกลางวัน
+          </div>
+        </div>
+      );
+    }
+
+    const annBatSavings  = result.annualBatterySavingsTHB || 0;
+    const monthBatSavings= annBatSavings / 12;
+    const monthBatKwh    = annBatKwh / 12;
+    const dailyCharge    = result.avgDailyBatCharge || 0;
+    const dailyDischarge = result.avgDailyBatDischarge || 0;
+    const nightCov       = result.nightCoveragePercent || 0;
+    const blendedRate    = result.batBlendedRate || 0;
+    const annBatOnPeak   = result.annualBatteryOnPeakKwh || 0;
+    const annBatOffPeak  = result.annualBatteryOffPeakKwh || 0;
+    const nightKwhYear   = (result.nighttimeKwh || 0) * 12;
+    const eff            = bat.efficiency || 90;
+    const onPeakRate     = tariff.mode === 'flat' ? tariff.flatRate : tariff.onPeakRate;
+    const offPeakRate    = tariff.mode === 'flat' ? tariff.flatRate : tariff.offPeakRate;
+
+    return (
+      <div className="bg-white rounded-2xl shadow-card p-6 no-print">
+        <h3 className="text-lg font-semibold text-ink-900 mb-1 flex items-center gap-2">
+          <BatteryIcon cn="w-5 h-5 text-green-600" />
+          แบตเตอรี่กักเก็บพลังงาน
+        </h3>
+        <p className="text-sm text-ink-500 mb-4">
+          ชาร์จจากไฟเกินกลางวัน → จ่ายไฟกลางคืน 18:00–06:00 · ความจุ {bat.capacityKwh} kWh · ประสิทธิภาพ {eff}%
+        </p>
+
+        {/* Daily cycle visualization */}
+        <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-xl p-4 mb-4">
+          <p className="text-xs font-semibold text-green-800 uppercase tracking-wide mb-3">
+            🔋 วงจรการใช้งานรายวัน
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="text-center">
+              <div className="inline-flex items-center gap-1.5 text-amber-700 bg-amber-100 rounded-lg px-3 py-1 text-xs font-medium mb-2">
+                <SunIcon cn="w-3.5 h-3.5" /> ☀️ ชาร์จ 06:00–18:00
+              </div>
+              <p className="text-xl font-bold text-amber-700">{formatNumber(dailyCharge, 1)} kWh</p>
+              <p className="text-[10px] text-ink-500">จากไฟเกิน → เข้าแบต (ก่อน eff. {eff}%)</p>
+            </div>
+            <div className="text-center">
+              <div className="inline-flex items-center gap-1.5 text-blue-700 bg-blue-100 rounded-lg px-3 py-1 text-xs font-medium mb-2">
+                <MoonIcon cn="w-3.5 h-3.5" /> 🌙 จ่ายไฟ 18:00–06:00
+              </div>
+              <p className="text-xl font-bold text-blue-700">{formatNumber(dailyDischarge, 1)} kWh</p>
+              <p className="text-[10px] text-ink-500">จ่ายไฟกลางคืนทดแทนไฟจากการไฟฟ้า</p>
+            </div>
+          </div>
+          <div className="mt-3 pt-3 border-t border-green-200/60">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-ink-600">ใช้แบตได้จริง/วัน (หลังหัก eff.)</span>
+              <span className="font-semibold text-green-700">
+                {formatNumber(dailyDischarge, 1)} / {bat.capacityKwh} kWh
+                ({formatNumber((dailyDischarge / Math.max(bat.capacityKwh, 0.1)) * 100, 0)}% ของความจุ)
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <div className="bg-green-50 border border-green-100 rounded-xl p-3">
+            <p className="text-[10px] text-green-700 uppercase tracking-wide">ทดแทนไฟกลางคืน/เดือน</p>
+            <p className="text-lg font-bold text-green-700 mt-1">{formatNumber(monthBatKwh, 0)} kWh</p>
+          </div>
+          <div className="bg-green-50 border border-green-100 rounded-xl p-3">
+            <p className="text-[10px] text-green-700 uppercase tracking-wide">ประหยัดจากแบต/เดือน</p>
+            <p className="text-lg font-bold text-green-700 mt-1">{formatTHB(monthBatSavings)}</p>
+          </div>
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+            <p className="text-[10px] text-blue-700 uppercase tracking-wide">ทดแทนไฟกลางคืน/ปี</p>
+            <p className="text-lg font-bold text-blue-700 mt-1">{formatNumber(annBatKwh, 0)} kWh</p>
+          </div>
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+            <p className="text-[10px] text-blue-700 uppercase tracking-wide">ประหยัดจากแบต/ปี</p>
+            <p className="text-lg font-bold text-blue-700 mt-1">{formatTHB(annBatSavings)}</p>
+          </div>
+        </div>
+
+        {/* Night coverage + on/off-peak split */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="bg-ink-100/60 rounded-xl p-3.5">
+            <p className="text-[11px] text-ink-500 uppercase tracking-wide mb-2">ครอบคลุมไฟกลางคืน</p>
+            <div className="flex items-end gap-3">
+              <span className={clsx(
+                'text-2xl font-bold',
+                nightCov >= 50 ? 'text-green-600' : nightCov >= 20 ? 'text-amber-600' : 'text-red-600'
+              )}>{formatNumber(nightCov, 1)}%</span>
+              <span className="text-xs text-ink-500 pb-1">
+                {formatNumber(annBatKwh, 0)} / {formatNumber(nightKwhYear, 0)} kWh ต่อปี
+              </span>
+            </div>
+            {nightCov < 30 && (
+              <p className="text-[10px] text-amber-700 mt-1.5 bg-amber-50 px-2 py-1 rounded-md">
+                💡 เพิ่มขนาดระบบโซลาร์ให้ใหญ่ขึ้นเพื่อมีไฟเกินชาร์จแบตมากขึ้น
+              </p>
+            )}
+          </div>
+          {tariff.mode !== 'flat' && (
+            <div className="bg-ink-100/60 rounded-xl p-3.5">
+              <p className="text-[11px] text-ink-500 uppercase tracking-wide mb-2">แบตจ่ายไฟช่วง On-peak / Off-peak</p>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-red-600 flex items-center gap-1">
+                    <ZapIcon cn="w-3 h-3" /> On-peak (จ-ศ 18:00–22:00)
+                  </span>
+                  <span className="font-semibold text-red-600">
+                    {formatNumber(annBatOnPeak, 0)} kWh · {formatTHB(annBatOnPeak * onPeakRate)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-blue-600 flex items-center gap-1">
+                    <MoonIcon cn="w-3 h-3" /> Off-peak (22:00–06:00 + ส-อา)
+                  </span>
+                  <span className="font-semibold text-blue-600">
+                    {formatNumber(annBatOffPeak, 0)} kWh · {formatTHB(annBatOffPeak * offPeakRate)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs border-t border-ink-300/40 pt-1.5">
+                  <span className="text-ink-600">อัตราเฉลี่ยแบต</span>
+                  <span className="font-semibold text-ink-700">{formatRate(blendedRate)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -1914,7 +2124,7 @@
     // Use total cost (solar + battery if any) so projections include the battery investment.
     const totalCost = baseResult.totalInstallCostTHB != null
       ? baseResult.totalInstallCostTHB
-      : totalInstallCost(baseSystem, equipment);
+      : totalInstallCost(baseSystem, equipment, adv);
     const proj25 = buildYearlyProjection(baseResult, totalCost, adv, 25);
     const netProfit25 = proj25[25] ? proj25[25].cumulativeNoSolar - proj25[25].cumulativeWithSolar : 0;
     const netProfit10 = proj25[10] ? proj25[10].cumulativeNoSolar - proj25[10].cumulativeWithSolar : 0;
@@ -1923,6 +2133,9 @@
     const yearsToProfit = baseResult.breakEvenYears;
     const batteryCost = (equipment && equipment.battery && equipment.battery.enabled)
       ? (Number(equipment.battery.costTHB) || 0) : 0;
+    const vatEnabled = !!(adv && adv.vat && adv.vat.enabled);
+    const vatRate    = vatEnabled ? (Number(adv.vat.rate) || 0) / 100 : 0;
+    const vatAmount  = vatEnabled ? Math.round((baseSystem.installationCostTHB + batteryCost) * vatRate) : 0;
 
     return (
       <div className="bg-gradient-to-br from-brand-50 to-amber-50 border-2 border-brand-200 rounded-2xl shadow-card p-6 no-print">
@@ -1935,11 +2148,16 @@
             <p className="text-sm text-ink-500">ขนาด {baseSystem.systemSizeKw} kW — ภาพรวมที่ตอบโจทย์</p>
           </div>
           <div className="text-right">
-            <p className="text-[11px] text-ink-500 uppercase tracking-wide">{batteryCost > 0 ? 'ต้นทุนรวม (แผง + แบต)' : 'ต้นทุนติดตั้ง'}</p>
+            <p className="text-[11px] text-ink-500 uppercase tracking-wide">
+              {batteryCost > 0 || vatEnabled
+                ? ('ต้นทุนรวม' + (batteryCost > 0 ? ' (แผง+แบต' : ' (แผง') + (vatEnabled ? '+VAT)' : ')'))
+                : 'ต้นทุนติดตั้ง'}
+            </p>
             <p className="text-2xl font-bold text-brand-700">{formatTHB(totalCost)}</p>
             <p className="text-[10px] text-ink-500">
               {formatTHB(costPerKw)} / kW
               {batteryCost > 0 && <> · แบต {formatTHB(batteryCost)}</>}
+              {vatEnabled && <> · VAT {adv.vat.rate}% (+{formatTHB(vatAmount)})</>}
             </p>
           </div>
         </div>
@@ -2191,12 +2409,16 @@
     );
   }
 
-  function DetailedSummary({ result, system, tariff, adv }) {
+  function DetailedSummary({ result, system, tariff, adv, equipment }) {
     // Year-1 savings (already includes net metering — added inside calculate())
     const effectiveAnnualSavings = result.annualSavingsTHB;
     const monthlySavings         = effectiveAnnualSavings / 12;
     // Net metering revenue (already counted inside annualSavingsTHB; exposed for display)
     const nmRevenueYear          = result.annualNetMeteringTHB || 0;
+    // Battery savings (already counted inside annualSavingsTHB; exposed for display)
+    const batSavingsYear         = result.annualBatterySavingsTHB || 0;
+    const batOffsetKwhYear       = result.annualBatteryOffsetKwh || 0;
+    const hasBattery             = !!(equipment && equipment.battery && equipment.battery.enabled && batOffsetKwhYear > 0);
     // Break-even (already adv-adjusted by calculate())
     const effectiveBreakEven     = result.breakEvenYears;
 
@@ -2230,7 +2452,8 @@
     const hasAdv = adv && (
       (adv.rateEscalation && adv.rateEscalation.enabled) ||
       (adv.panelDegradation && adv.panelDegradation.enabled) ||
-      (adv.netMetering && adv.netMetering.enabled)
+      (adv.netMetering && adv.netMetering.enabled) ||
+      (adv.vat && adv.vat.enabled)
     );
     const advHint = hasAdv ? ' (รวมตั้งค่าขั้นสูง)' : '';
 
@@ -2240,9 +2463,16 @@
           <h2 className="text-xl font-semibold text-ink-900">สรุปผลการคำนวณ</h2>
           <p className="text-xs text-ink-500">
             ระบบ {system.systemSizeKw.toFixed(1)} kW · ต้นทุน {formatTHB(totalCost)}
-            {totalCost !== system.installationCostTHB && (
-              <span className="text-ink-400"> (แผง {formatTHB(system.installationCostTHB)} + แบต {formatTHB(totalCost - system.installationCostTHB)})</span>
-            )}
+            {(() => {
+              const batCost = (equipment && equipment.battery && equipment.battery.enabled) ? (Number(equipment.battery.costTHB) || 0) : 0;
+              const vatOn   = !!(adv && adv.vat && adv.vat.enabled);
+              const vatAmt  = vatOn ? Math.round((system.installationCostTHB + batCost) * (Number(adv.vat.rate) || 0) / 100) : 0;
+              if (batCost === 0 && !vatOn) return null;
+              const parts = ['แผง ' + formatTHB(system.installationCostTHB)];
+              if (batCost > 0) parts.push('แบต ' + formatTHB(batCost));
+              if (vatOn)       parts.push('VAT ' + formatTHB(vatAmt));
+              return <span className="text-ink-400"> ({parts.join(' + ')})</span>;
+            })()}
             {hasAdv && <span className="text-brand-600 font-medium"> · ⚙ ตั้งค่าขั้นสูง ON</span>}
           </p>
         </div>
@@ -2268,13 +2498,17 @@
               hint={'ส่วนต่าง ' + formatTHB(monthlySavings) + '/เดือน'}
               accent={result.monthlyBillTHB - monthlySavings >= 0 ? 'text-blue-600' : 'text-green-600'} />
             <StatBox
-              label={'ประหยัดต่อเดือน' + (nmRevenueYear > 0 ? ' + ขายไฟ' : '')}
+              label={'ประหยัดต่อเดือน' + (nmRevenueYear > 0 ? ' + ขายไฟ' : '') + (hasBattery ? ' + แบต' : '')}
               value={formatTHB(monthlySavings)}
-              hint={nmRevenueYear > 0 ? 'รวมรายได้ขายไฟ ' + formatTHB(nmRevenueYear/12) + '/เดือน' : undefined}
+              hint={[
+                hasBattery && 'รวมแบต ' + formatTHB(batSavingsYear/12) + '/เดือน',
+                nmRevenueYear > 0 && 'รวมขายไฟ ' + formatTHB(nmRevenueYear/12) + '/เดือน',
+              ].filter(Boolean).join(' · ') || undefined}
               accent="text-green-600" />
             <StatBox
-              label={'ประหยัดต่อปี' + (nmRevenueYear > 0 ? ' + ขายไฟ' : '')}
+              label={'ประหยัดต่อปี' + (nmRevenueYear > 0 ? ' + ขายไฟ' : '') + (hasBattery ? ' + แบต' : '')}
               value={formatTHB(effectiveAnnualSavings)}
+              hint={hasBattery ? 'แบตเตอรี่ทดแทน ' + formatNumber(batOffsetKwhYear, 0) + ' kWh/ปี (' + formatTHB(batSavingsYear) + ')' : undefined}
               accent="text-green-600" />
             <StatBox
               label={'ประหยัดรวม 10 ปี' + advHint}
@@ -2449,7 +2683,7 @@
   // ==========================================================================
   // EQUIPMENT SECTION  ⭐ NEW — กรอกอุปกรณ์เพื่อปรับการคำนวณให้แม่นยำขึ้น
   // ==========================================================================
-  function EquipmentSection({ value, onChange, system, onSystemChange, pr, onPrChange, autoSyncSize, onAutoSyncChange }) {
+  function EquipmentSection({ value, onChange, system, onSystemChange, pr, onPrChange, autoSyncSize, onAutoSyncChange, adv }) {
     const [open, setOpen] = useState(true);
     const setPanels   = (p) => onChange({ ...value, panels:   { ...value.panels,   ...p } });
     const setInverter = (p) => onChange({ ...value, inverter: { ...value.inverter, ...p } });
@@ -2727,6 +2961,63 @@
             ต้นทุนเฉลี่ยในตลาด: ~30,000–40,000 บาท/kW (รวมแผง, อินเวอร์เตอร์, ติดตั้ง)
             <br />ปัจจุบัน <strong>{formatTHB(system.installationCostTHB / Math.max(effKw, 0.01))} / kW</strong>
           </p>
+
+          {/* VAT + Total cost summary */}
+          {(() => {
+            const batCost = (value.battery && value.battery.enabled) ? (Number(value.battery.costTHB) || 0) : 0;
+            const subtotal = (Number(system.installationCostTHB) || 0) + batCost;
+            const vatOn = !!(adv && adv.vat && adv.vat.enabled);
+            const vatRate = vatOn ? (Number(adv.vat.rate) || 0) : 0;
+            const vatAmt = Math.round(subtotal * vatRate / 100);
+            const grandTotal = subtotal + vatAmt;
+            const hasBat = value.battery && value.battery.enabled;
+
+            return (
+              <div className="mt-3 bg-gradient-to-br from-brand-50 to-amber-50 border border-brand-200 rounded-xl p-4 space-y-2">
+                <p className="text-xs font-semibold text-brand-700 uppercase tracking-wide mb-2">
+                  💰 สรุปต้นทุนทั้งหมด
+                </p>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-ink-600">ต้นทุนติดตั้ง (โซลาร์)</span>
+                  <span className="font-medium text-ink-800">{formatTHB(system.installationCostTHB)}</span>
+                </div>
+                {hasBat && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-ink-600">ราคาแบตเตอรี่</span>
+                    <span className="font-medium text-ink-800">{formatTHB(batCost)}</span>
+                  </div>
+                )}
+                {(hasBat || vatOn) && (
+                  <div className="flex items-center justify-between text-sm border-t border-brand-200/60 pt-1">
+                    <span className="text-ink-600">รวมก่อน VAT</span>
+                    <span className="font-medium text-ink-800">{formatTHB(subtotal)}</span>
+                  </div>
+                )}
+                {vatOn && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-amber-700 flex items-center gap-1">
+                      <span className="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
+                      + VAT {vatRate}%
+                    </span>
+                    <span className="font-semibold text-amber-700">+{formatTHB(vatAmt)}</span>
+                  </div>
+                )}
+                <div className={clsx(
+                  'flex items-center justify-between pt-2 border-t-2',
+                  vatOn ? 'border-brand-300' : 'border-brand-200/60'
+                )}>
+                  <span className="text-sm font-bold text-brand-800">
+                    {vatOn ? 'ต้นทุนรวม (รวม VAT)' : 'ต้นทุนรวม'}
+                  </span>
+                  <span className="text-lg font-bold text-brand-700">{formatTHB(grandTotal)}</span>
+                </div>
+                <p className="text-[10px] text-ink-500 mt-1">
+                  ใช้คำนวณจุดคุ้มทุน / ROI
+                  {!vatOn && ' · เปิด VAT ได้ที่ตั้งค่าขั้นสูง'}
+                </p>
+              </div>
+            );
+          })()}
         </div>
 
         </>}
@@ -2911,7 +3202,13 @@
                 <strong style={{fontSize:'7pt'}}>💰 ต้นทุนและระบบ</strong><br/>
                 ขนาดระบบ (Effective): {system.systemSizeKw} kW<br/>
                 ต้นทุนติดตั้ง (โซลาร์): {formatTHB(system.installationCostTHB)}<br/>
-                {equipment.battery.enabled && <>ราคาแบตฯ: {formatTHB(equipment.battery.costTHB || 0)}<br/>ต้นทุนรวม: {formatTHB(totalInstallCost(system, equipment))}<br/></>}
+                {equipment.battery.enabled && <>ราคาแบตฯ: {formatTHB(equipment.battery.costTHB || 0)}<br/></>}
+                {!!(adv && adv.vat && adv.vat.enabled) && (() => {
+                  const batCost = (equipment.battery && equipment.battery.enabled) ? (Number(equipment.battery.costTHB) || 0) : 0;
+                  const vatAmt = Math.round((system.installationCostTHB + batCost) * (Number(adv.vat.rate) || 0) / 100);
+                  return <>VAT {adv.vat.rate}%: {formatTHB(vatAmt)}<br/></>;
+                })()}
+                ต้นทุนรวม: {formatTHB(totalInstallCost(system, equipment, adv))}<br/>
                 ต้นทุน/kW: {formatTHB(Math.round(Number(system.installationCostTHB) / Math.max(system.systemSizeKw, 0.1)))} / kW<br/>
                 โหมดข้อมูล: {mode === 'estimated' ? 'ประเมินคร่าวๆ' : 'ละเอียด (อุปกรณ์)'}
               </div>
@@ -2960,7 +3257,8 @@
                 pr={pr}
                 onPrChange={setPr}
                 autoSyncSize={autoSyncSize}
-                onAutoSyncChange={setAutoSyncSize} />
+                onAutoSyncChange={setAutoSyncSize}
+                adv={adv} />
             </div>
 
             {/* 3. Settings Sidebar */}
@@ -2976,7 +3274,7 @@
 
           <SummaryCards result={result} system={system} tariff={tariff} adv={adv} />
 
-          <DetailedSummary result={result} system={system} tariff={tariff} adv={adv} />
+          <DetailedSummary result={result} system={system} tariff={tariff} adv={adv} equipment={equipment} />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 print-charts-row">
             <div className="bg-white rounded-2xl shadow-card p-6">
@@ -3026,6 +3324,9 @@
               </Recharts.ResponsiveContainer>
             </div>
           </div>
+
+          {/* Battery Summary — shown only when battery is enabled */}
+          <BatterySummary result={result} equipment={equipment} tariff={tariff} />
 
           {/* Excess Solar Months Detail */}
           <ExcessSolarDetail data={monthly} adv={adv} />

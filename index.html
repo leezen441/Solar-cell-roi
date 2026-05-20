@@ -1480,7 +1480,7 @@
             <span className="text-[10px] text-ink-500 ml-auto">รวม baseline + เครื่องใช้ไฟฟ้า</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {/* 18:00 – 22:00 — Off-peak ตอนเย็น (ไม่มีแดด) */}
             <div className="bg-white border border-indigo-200 rounded-xl p-3">
               <div className="flex items-center justify-between mb-1.5">
@@ -1505,8 +1505,8 @@
                 </div>
               </div>
               <p className="text-[10px] text-ink-500 mt-2 leading-snug">
-                ช่วง 4 ชม. หลังพระอาทิตย์ตก — โซลาร์ผลิตไฟไม่ได้ ต้องพึ่งกริดหรือแบตเตอรี่
-                · ค่าไฟประมาณ <strong>{formatTHB(eveningCost)}</strong>/เดือน
+                4 ชม. หลังพระอาทิตย์ตก — โซลาร์ไม่ทำงาน
+                · ค่าไฟ <strong>{formatTHB(eveningCost)}</strong>/ด.
               </p>
             </div>
 
@@ -1534,8 +1534,37 @@
                 </div>
               </div>
               <p className="text-[10px] text-ink-500 mt-2 leading-snug">
-                ช่วง 12 ชม. ทั้งคืน — ใช้กำหนดขนาดแบตเตอรี่ที่เหมาะสม
-                · ค่าไฟประมาณ <strong>{formatTHB(night12Cost)}</strong>/เดือน
+                12 ชม. ทั้งคืน — ใช้กำหนดขนาดแบตเตอรี่
+                · ค่าไฟ <strong>{formatTHB(night12Cost)}</strong>/ด.
+              </p>
+            </div>
+
+            {/* 00:00 – 24:00 — รวมทั้งวัน (24 ชม.) */}
+            <div className="bg-white border border-indigo-300 rounded-xl p-3 ring-2 ring-indigo-100">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[11px] text-ink-500 uppercase tracking-wide">
+                  รวมทั้งวัน (24 ชม.)
+                </p>
+                <span className="text-[10px] text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded-full font-medium">
+                  00:00–24:00
+                </span>
+              </div>
+              <p className="text-2xl font-bold text-indigo-700">
+                {formatNumber(totalKwh, 0)} <span className="text-sm font-normal text-ink-500">kWh/เดือน</span>
+              </p>
+              <div className="mt-2 pt-2 border-t border-ink-100 grid grid-cols-2 gap-2 text-[11px]">
+                <div>
+                  <p className="text-ink-500">เฉลี่ย/วัน</p>
+                  <p className="font-semibold text-ink-900">{formatNumber(totalKwh / 30, 1)} kWh</p>
+                </div>
+                <div>
+                  <p className="text-ink-500">โหลดเฉลี่ย</p>
+                  <p className="font-semibold text-ink-900">{formatNumber(totalKwh / 30 / 24, 2)} kW</p>
+                </div>
+              </div>
+              <p className="text-[10px] text-ink-500 mt-2 leading-snug">
+                การใช้ไฟทั้งหมดต่อวัน — ใช้คำนวณขนาดระบบโซลาร์
+                · ค่าไฟ <strong>{formatTHB(estBill)}</strong>/ด.
               </p>
             </div>
           </div>

@@ -539,6 +539,41 @@
   function appliancesNightKwh(items) {
     return items.reduce((s, a) => s + applianceKwhSplit(a).nightKwh, 0);
   }
+
+  /**
+   * Count how many running hours of an appliance fall inside an arbitrary
+   * time window [winStart, winEnd) — supports midnight wrap (e.g. 18→6).
+   */
+  function hoursInWindow(applianceHours, winStart, winEnd) {
+    const inWin = (h) => {
+      if (winStart === winEnd) return false;
+      if (winStart < winEnd) return h >= winStart && h < winEnd;
+      // wraps past midnight
+      return h >= winStart || h < winEnd;
+    };
+    let n = 0;
+    for (const h of applianceHours) if (inWin(h)) n++;
+    return n;
+  }
+
+  /**
+   * kWh per month for a single appliance inside an arbitrary time window.
+   * Counts ALL days the appliance is configured for (weekdays + weekends).
+   */
+  function applianceKwhInWindow(a, winStart, winEnd) {
+    const days         = a.daysOfWeek || ALL_DAYS;
+    const weekdayCount = days.slice(0, 5).filter(Boolean).length;
+    const weekendCount = days.slice(5, 7).filter(Boolean).length;
+    const totalDays    = (weekdayCount + weekendCount) * (30 / 7);
+    const hrs          = hoursInWindow(runningHours(a.startHour, a.endHour), winStart, winEnd);
+    const lf           = Number(a.loadFactor) || 1.0;
+    const W            = (Number(a.watts) * Math.max(Number(a.quantity), 1) * lf) / 1000;
+    return W * hrs * totalDays;
+  }
+
+  function appliancesKwhInWindow(items, winStart, winEnd) {
+    return items.reduce((s, a) => s + applianceKwhInWindow(a, winStart, winEnd), 0);
+  }
   function appliancesSolarOnPeak(items) {
     return items.reduce((s, a) => s + applianceKwhSplit(a).solarOnPeakKwh, 0);
   }
@@ -1096,6 +1131,31 @@
     const daytimeKwh        = applianceDay + baselineDay;
     const nighttimeKwh      = applianceNight + baselineNight;
     const totalKwh          = daytimeKwh + nighttimeKwh;
+
+    // ⭐ NEW — รวมการใช้ไฟในช่วงเวลาเฉพาะ (จากรายการเครื่องใช้ไฟฟ้า)
+    //   • Off-peak ตอนเย็น 18:00–22:00 (4 ชม.)
+    //   • กลางคืน 18:00–06:00 (12 ชม.)
+    // หมายเหตุ: รวมโหลดพื้นฐาน (baseline) แบบสัดส่วนชั่วโมงด้วย
+    const appKwhEvening   = appliancesKwhInWindow(value.appliances, 18, 22);
+    const appKwhNight12   = appliancesKwhInWindow(value.appliances, 18, 6);
+    // โหลดพื้นฐานช่วงกลางคืน (18–06) ใช้ค่า baselineNight ตามที่ผู้ใช้กำหนด (% กลางวัน)
+    // โหลดพื้นฐานช่วงเย็น (18–22) ประมาณการเป็นสัดส่วน 4/12 ของ baselineNight
+    const baselineKwhEvening = baselineNight * (4 / 12);
+    const baselineKwhNight12 = baselineNight;
+    const eveningKwhTotal = appKwhEvening + baselineKwhEvening;
+    const nightKwhTotal   = appKwhNight12 + baselineKwhNight12;
+    // ค่าไฟประมาณการของช่วงเหล่านี้ (ใช้อัตรา flat/Off-peak ตามโหมด)
+    // 18–22 จันทร์–ศุกร์เป็น On-peak / เสาร์-อาทิตย์เป็น Off-peak → ใช้ค่าเฉลี่ยถ่วงน้ำหนัก 5/7-2/7
+    const rateOnPeak  = tariff.mode === 'flat' ? tariff.flatRate : tariff.onPeakRate;
+    const rateOffPeak = tariff.mode === 'flat' ? tariff.flatRate : tariff.offPeakRate;
+    const eveningBlendedRate = (5/7) * rateOnPeak + (2/7) * rateOffPeak;
+    // 18–06: weekday on-peak 4ชม + weekday off-peak 8ชม + weekend off-peak 12ชม
+    //        = (5/7 × 4 + 0)/12 = 20/84 weighted on-peak
+    const night12OnPeakFrac  = (5 * 4) / (7 * 12);
+    const night12OffPeakFrac = 1 - night12OnPeakFrac;
+    const night12BlendedRate = night12OnPeakFrac * rateOnPeak + night12OffPeakFrac * rateOffPeak;
+    const eveningCost = eveningKwhTotal * eveningBlendedRate;
+    const night12Cost = nightKwhTotal   * night12BlendedRate;
     // Baseline on-peak/off-peak split for TOU bill
     const bDayWkd   = baselineDay   * WEEKDAY_FRACTION;
     const bNightWkd = baselineNight * WEEKDAY_FRACTION;
@@ -1409,6 +1469,81 @@
           <div className="bg-white border border-ink-300 rounded-xl py-3">
             <p className="text-[11px] text-ink-500">ค่าไฟต่อปี</p>
             <p className="font-semibold text-ink-900">{formatTHB(estBill * 12)}</p>
+          </div>
+        </div>
+
+        {/* ⭐ NEW — สรุปการใช้ไฟตามช่วงเวลา (สำหรับวางแผนแบตเตอรี่ / โซลาร์) */}
+        <div className="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 rounded-2xl p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <MoonIcon cn="w-4 h-4 text-indigo-600" />
+            <h3 className="text-sm font-semibold text-ink-900">สรุปการใช้ไฟตามช่วงเวลา</h3>
+            <span className="text-[10px] text-ink-500 ml-auto">รวม baseline + เครื่องใช้ไฟฟ้า</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* 18:00 – 22:00 — Off-peak ตอนเย็น (ไม่มีแดด) */}
+            <div className="bg-white border border-indigo-200 rounded-xl p-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[11px] text-ink-500 uppercase tracking-wide">
+                  Off-peak ตอนเย็น
+                </p>
+                <span className="text-[10px] text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded-full font-medium">
+                  18:00–22:00
+                </span>
+              </div>
+              <p className="text-2xl font-bold text-indigo-700">
+                {formatNumber(eveningKwhTotal, 0)} <span className="text-sm font-normal text-ink-500">kWh/เดือน</span>
+              </p>
+              <div className="mt-2 pt-2 border-t border-ink-100 grid grid-cols-2 gap-2 text-[11px]">
+                <div>
+                  <p className="text-ink-500">เฉลี่ย/วัน</p>
+                  <p className="font-semibold text-ink-900">{formatNumber(eveningKwhTotal / 30, 1)} kWh</p>
+                </div>
+                <div>
+                  <p className="text-ink-500">โหลดเฉลี่ย</p>
+                  <p className="font-semibold text-ink-900">{formatNumber(eveningKwhTotal / 30 / 4, 2)} kW</p>
+                </div>
+              </div>
+              <p className="text-[10px] text-ink-500 mt-2 leading-snug">
+                ช่วง 4 ชม. หลังพระอาทิตย์ตก — โซลาร์ผลิตไฟไม่ได้ ต้องพึ่งกริดหรือแบตเตอรี่
+                · ค่าไฟประมาณ <strong>{formatTHB(eveningCost)}</strong>/เดือน
+              </p>
+            </div>
+
+            {/* 18:00 – 06:00 — กลางคืนทั้งหมด */}
+            <div className="bg-white border border-indigo-200 rounded-xl p-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[11px] text-ink-500 uppercase tracking-wide">
+                  กลางคืน (ไม่มีแดด)
+                </p>
+                <span className="text-[10px] text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded-full font-medium">
+                  18:00–06:00
+                </span>
+              </div>
+              <p className="text-2xl font-bold text-indigo-700">
+                {formatNumber(nightKwhTotal, 0)} <span className="text-sm font-normal text-ink-500">kWh/เดือน</span>
+              </p>
+              <div className="mt-2 pt-2 border-t border-ink-100 grid grid-cols-2 gap-2 text-[11px]">
+                <div>
+                  <p className="text-ink-500">เฉลี่ย/วัน</p>
+                  <p className="font-semibold text-ink-900">{formatNumber(nightKwhTotal / 30, 1)} kWh</p>
+                </div>
+                <div>
+                  <p className="text-ink-500">โหลดเฉลี่ย</p>
+                  <p className="font-semibold text-ink-900">{formatNumber(nightKwhTotal / 30 / 12, 2)} kW</p>
+                </div>
+              </div>
+              <p className="text-[10px] text-ink-500 mt-2 leading-snug">
+                ช่วง 12 ชม. ทั้งคืน — ใช้กำหนดขนาดแบตเตอรี่ที่เหมาะสม
+                · ค่าไฟประมาณ <strong>{formatTHB(night12Cost)}</strong>/เดือน
+              </p>
+            </div>
+          </div>
+
+          <div className="text-[11px] text-ink-500 bg-white/60 rounded-lg px-3 py-2 border border-indigo-100/60">
+            💡 <strong>การใช้งาน:</strong> ตัวเลขเหล่านี้ช่วยให้คุณเลือก<strong>ขนาดแบตเตอรี่</strong>ได้เหมาะสม —
+            แบตเตอรี่ควรมีความจุครอบคลุมการใช้ไฟช่วงไม่มีแดด (18:00–06:00)
+            ส่วน 18:00–22:00 คือช่วงที่ใช้ไฟหนักที่สุดและจ่ายอัตรา On-peak (จ-ศ)
           </div>
         </div>
       </div>
